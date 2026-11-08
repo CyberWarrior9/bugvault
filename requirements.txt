@@ -1,0 +1,9 @@
+# Analysis pipeline dependencies (scripts/)
+pyarrow>=15.0
+requests>=2.31
+
+# Planned platform stack (not yet implemented — see plans/plan4.md §9.2)
+# httpx
+# playwright
+# psycopg2-binary
+# redis
