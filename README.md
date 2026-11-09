@@ -23,6 +23,7 @@ and reproducible analysis pipelines built on HackerOne's official disclosed-repo
 │   ├── 35-Report-Studies/    # 85 dossier notes of top-voted, bounty-paid H1 reports
 │   │   └── _MOC.md           #   index + exemplar lessons + report standard
 │   └── _data/reports.csv     # Layer-1 index: all 10,094 disclosed reports
+├── recon/                    # Recon engine: python3 -m recon (see recon/README.md)
 ├── scripts/                  # Reproducible pipeline (see below)
 ├── docs/
 │   ├── h1-report-standard.md     # What paid reports actually contain (data-grounded)
@@ -75,6 +76,14 @@ SORT votes DESC
   HTTP smuggling 44% · XSS-DOM 46% · CSRF 33%
 - The report template for automated report-writing agents (docs/h1-report-standard.md)
 
+## Recon capability inventory
+
+ARTEX-inspired recon includes a phase/tool catalog, five offline scanner-output
+adapters plus context-labelled HAR imports, method-specific operations and source
+provenance. Run `python3 -m recon catalog`; see [`recon/README.md`](recon/README.md)
+for the seven capability guides, deduplication rules, actual agent counts (**zero LLM
+agents**) and remaining execution-isolation limits.
+
 ## Status
 
 - [x] Plans 1–4 (architecture, modules, recon levels, vault design)
@@ -83,6 +92,7 @@ SORT votes DESC
 - [ ] `30-Bug-Classes/` playbooks (seed from mind-hunt skills)
 - [ ] `00-Engine/` doctrine + agent prompts
 - [ ] KB-expansion pipeline implementation (docs/kb-expansion-pipeline.md)
+- [x] Recon engine (`recon/`): scope-enforced, event-driven, freshness-ranked; ARTEX recon ideas ported (see recon/README.md)
 - [ ] First campaign folder
 
 ## License

@@ -1,0 +1,4 @@
+{"type":"DNS_NAME","data":"api.example.com"}
+{"type":"URL","data":"https://api.example.com/orders/101?user_id=11"}
+{"type":"OPEN_TCP_PORT","data":"api.example.com:8443"}
+{"type":"VULNERABILITY","data":{"description":"fixture only: never promote scanner claims"}}

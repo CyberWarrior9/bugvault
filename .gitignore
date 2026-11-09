@@ -11,3 +11,13 @@ data/
 # derived intermediates
 h1_sample/
 records.json
+
+# recon campaigns hold target data (private-program scope, hidden endpoints, secret leads).
+# Ignored by default because this repo has a GitHub remote. Only un-ignore a campaign
+# in a PRIVATE repo, and never its .recon/ state (raw response bodies).
+vault/10-Campaigns/*
+!vault/10-Campaigns/README.md
+.recon/
+
+# exploit-lookup cache (CISA KEV feed)
+.recon-cache/

@@ -1,0 +1,1 @@
+{"data":{"list":[{"subdomain":"api.example.com"},{"url":"https://api.example.com/orders/104","method":"GET"},{"url":"https://outside.invalid/api/no-scan"}]}}
