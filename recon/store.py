@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -70,6 +71,30 @@ CREATE TABLE IF NOT EXISTS requests(
   id INTEGER PRIMARY KEY,
   ts TEXT, method TEXT, url TEXT, status INTEGER, purpose TEXT,
   req_headers TEXT, resp_headers TEXT, body_sha256 TEXT, body_len INTEGER, error TEXT);
+CREATE TABLE IF NOT EXISTS response_capture(
+  request_id INTEGER PRIMARY KEY REFERENCES requests(id),
+  body_complete INTEGER CHECK(body_complete IS NULL OR body_complete IN (0,1)),
+  basis TEXT NOT NULL,
+  context TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS response_facts(
+  id INTEGER PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES requests(id),
+  asset_id INTEGER REFERENCES assets(id),
+  binding_key TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  response_sha256 TEXT NOT NULL,
+  created TEXT NOT NULL,
+  UNIQUE(request_id,binding_key,predicate,response_sha256));
+CREATE TABLE IF NOT EXISTS fact_verifications(
+  id INTEGER PRIMARY KEY,
+  fact_id INTEGER NOT NULL REFERENCES response_facts(id),
+  outcome TEXT NOT NULL CHECK(outcome IN ('supported','contradicted','inconclusive','stale')),
+  checker_version TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  checked TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS request_payload(
+  request_id INTEGER PRIMARY KEY REFERENCES requests(id),
+  body_sha256 TEXT, body_len INTEGER, content_type TEXT);
 CREATE TABLE IF NOT EXISTS endpoint_operations(
   id INTEGER PRIMARY KEY,
   endpoint_id INTEGER NOT NULL REFERENCES assets(id),
@@ -103,6 +128,11 @@ CREATE TABLE IF NOT EXISTS import_results(
   import_id INTEGER PRIMARY KEY REFERENCES source_imports(id),
   stats TEXT NOT NULL,
   updated TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS network_counters(name TEXT PRIMARY KEY, used INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS connection_events(
+  id INTEGER PRIMARY KEY, host TEXT NOT NULL, port INTEGER NOT NULL,
+  resolved TEXT NOT NULL, peer TEXT, outcome TEXT NOT NULL, created TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS host_pacing(host TEXT PRIMARY KEY, next_at REAL NOT NULL);
 """
 
 LIST_CAP = 200
@@ -151,6 +181,8 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        self.db.execute("INSERT OR IGNORE INTO network_counters VALUES('http_attempts', "
+                        "(SELECT count(*) FROM requests))")
         self.db.commit()
 
     def close(self) -> None:
@@ -405,6 +437,35 @@ class Store:
             " ORDER BY j.id")]
 
     # ---------------- request log ----------------
+    def reserve_network_attempt(self, limit: int) -> bool:
+        cur = self.db.execute("UPDATE network_counters SET used=used+1 "
+                              "WHERE name='http_attempts' AND used<?", (limit,))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def network_attempts(self) -> int:
+        return self.db.execute("SELECT used FROM network_counters WHERE name='http_attempts'").fetchone()[0]
+
+    def reserve_pacing_slot(self, host: str, interval: float) -> float:
+        """Per-host pacing shared by every process using this campaign; returns seconds to wait.
+
+        The in-process RateLimiter cannot see other processes (e.g. a shell loop of
+        `recon send`). The wait is capped at one interval so a clock change cannot stall.
+        """
+        current = time.time()
+        row = self.db.execute("SELECT next_at FROM host_pacing WHERE host=?", (host,)).fetchone()
+        start = max(current, row["next_at"] if row else 0.0)
+        wait = min(max(0.0, start - current), interval)
+        self.db.execute("INSERT OR REPLACE INTO host_pacing VALUES(?,?)", (host, current + wait + interval))
+        self.db.commit()
+        return wait
+
+    def connection_event(self, host, port, resolved, peer, outcome) -> None:
+        self.db.execute("INSERT INTO connection_events(host,port,resolved,peer,outcome,created) "
+                        "VALUES(?,?,?,?,?,?)", (host, port, json.dumps(sorted(set(resolved))),
+                                               peer, outcome, now()))
+        self.db.commit()
+
     def save_body(self, body: bytes) -> Optional[str]:
         if not body:
             return None
@@ -416,15 +477,52 @@ class Store:
         return sha
 
     def record_request(self, method: str, url: str, status: Optional[int], purpose: str,
-                       req_headers: Iterable[str], resp_headers: Dict[str, str],
-                       body: bytes = b"", error: Optional[str] = None) -> None:
-        self.db.execute(
+                        req_headers: Iterable[str], resp_headers: Dict[str, str],
+                        body: bytes = b"", error: Optional[str] = None,
+                        body_complete: Optional[bool] = None, basis: str = "unspecified",
+                        context: Optional[Dict[str, Any]] = None,
+                       req_body: bytes = b"", req_content_type: Optional[str] = None) -> int:
+        cur = self.db.execute(
             "INSERT INTO requests(ts, method, url, status, purpose, req_headers, resp_headers,"
             " body_sha256, body_len, error) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (now(), method, url, status, purpose, json.dumps(sorted(req_headers)),
              json.dumps(resp_headers, sort_keys=True), self.save_body(body), len(body or b""),
-             error))
+              error))
+        self.db.execute("INSERT INTO response_capture VALUES(?,?,?,?)",
+                        (cur.lastrowid, None if body_complete is None else int(body_complete),
+                         basis, json.dumps(context or {}, sort_keys=True)))
+        if req_body:
+            self.db.execute("INSERT INTO request_payload VALUES(?,?,?,?)",
+                            (cur.lastrowid, self.save_body(req_body), len(req_body),
+                             (req_content_type or "").lower() or None))
         self.db.commit()
+        return cur.lastrowid
+
+    def request_payload(self, request_id: int) -> Optional[Dict[str, Any]]:
+        row = self.db.execute("SELECT * FROM request_payload WHERE request_id=?",
+                              (request_id,)).fetchone()
+        return dict(row) if row else None
+
+    def response(self, request_id: int) -> Dict[str, Any]:
+        row = self.db.execute("SELECT r.*,c.body_complete,c.basis,c.context FROM requests r "
+                              "LEFT JOIN response_capture c ON c.request_id=r.id WHERE r.id=?",
+                              (request_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"no stored response {request_id}")
+        data = dict(row)
+        data["resp_headers"] = json.loads(data["resp_headers"] or "{}")
+        data["req_headers"] = json.loads(data["req_headers"] or "[]")
+        data["context"] = json.loads(data["context"] or "{}")
+        data["basis"] = data["basis"] or "legacy-unattributed"
+        # Payload fields are added only when a payload row exists, so response snapshots
+        # (and factcheck hashes) of legacy bodyless requests keep their exact shape.
+        payload = self.db.execute("SELECT body_sha256,body_len,content_type FROM request_payload "
+                                  "WHERE request_id=?", (request_id,)).fetchone()
+        if payload is not None:
+            data["payload_sha256"] = payload["body_sha256"]
+            data["payload_len"] = payload["body_len"]
+            data["payload_content_type"] = payload["content_type"]
+        return data
 
     def request_count(self) -> int:
         return self.db.execute("SELECT count(*) FROM requests WHERE error IS NULL").fetchone()[0]

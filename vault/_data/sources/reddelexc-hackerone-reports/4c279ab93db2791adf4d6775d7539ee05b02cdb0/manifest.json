@@ -1,0 +1,9 @@
+{
+  "acquisition": "https-download",
+  "bytes": 2063332,
+  "recorded_at": "2026-11-08T20:42:55.715873+00:00",
+  "repository": "https://github.com/reddelexc/hackerone-reports",
+  "revision": "4c279ab93db2791adf4d6775d7539ee05b02cdb0",
+  "sha256": "a39d5a83345621fa81fc902e57a626eb6de7f03d6de58a55d7370e0116f092ca",
+  "url": "https://raw.githubusercontent.com/reddelexc/hackerone-reports/4c279ab93db2791adf4d6775d7539ee05b02cdb0/data.csv"
+}

@@ -1,0 +1,95 @@
+{
+  "base": {
+    "path": "_data/reports.csv",
+    "sha256": "1e3087cad60db4ad2bf37e91b98b4ce70ef0f090d15fc9e00539174b6262f4fe",
+    "source": "Hacker0x01/hackerone_disclosed_reports"
+  },
+  "counts": {
+    "base_only_report_ids": 9,
+    "base_report_ids": 10094,
+    "duplicate_source_records": 0,
+    "linked_existing_study_notes": 85,
+    "merged_report_ids": 15443,
+    "new_report_ids": 5349,
+    "overlapping_report_ids": 10085,
+    "quarantined_source_records": 0,
+    "source_records": 25384,
+    "source_report_ids": 15434
+  },
+  "importer": "scripts/import_report_index.py",
+  "output": {
+    "path": "_data/reports-merged.csv",
+    "sha256": "48aa1047c1efd63edfac59acecd79eaa9bef6b41faf4843513bc097af1dd5719"
+  },
+  "policy": {
+    "bounty_zero": "unknown-or-zero; normalized amount blank",
+    "classification": "exact weakness crosswalk from base index; unknown stays unclassified",
+    "existing_fields": "preserved; upstream metadata stored separately",
+    "full_reports_fetched": false,
+    "historical_severity": "codebygk_* and bbtakeover_* fields only; never a current validation decision",
+    "knowledge_status": "source-indexed",
+    "metadata_precedence": [
+      "Hacker0x01/hackerone_disclosed_reports",
+      "reddelexc/hackerone-reports",
+      "codebygk/hackerone-bug-bounty-reports",
+      "0xN0RMXL/BugBountySkills"
+    ],
+    "reproduction_status": "not-reproduced"
+  },
+  "schema_version": 2,
+  "source_counts": {
+    "0xN0RMXL/BugBountySkills": {
+      "duplicate_source_records": 0,
+      "overlapping_with_other_inputs": 165,
+      "quarantined_source_records": 0,
+      "source_records": 165,
+      "source_report_ids": 165,
+      "unique_contribution": 0
+    },
+    "codebygk/hackerone-bug-bounty-reports": {
+      "duplicate_source_records": 0,
+      "overlapping_with_other_inputs": 9966,
+      "quarantined_source_records": 0,
+      "source_records": 10000,
+      "source_report_ids": 10000,
+      "unique_contribution": 34
+    },
+    "reddelexc/hackerone-reports": {
+      "duplicate_source_records": 0,
+      "overlapping_with_other_inputs": 12124,
+      "quarantined_source_records": 0,
+      "source_records": 15219,
+      "source_report_ids": 15219,
+      "unique_contribution": 3095
+    }
+  },
+  "sources": {
+    "0xN0RMXL/BugBountySkills": {
+      "acquisition": "https-download",
+      "bytes": 25830,
+      "recorded_at": "2026-11-11T23:00:55.564084+00:00",
+      "repository": "https://github.com/0xN0RMXL/BugBountySkills",
+      "revision": "e0414b47a7de0f5588adb9404de7c6975614f2c0",
+      "sha256": "9aeee31427ddb7edd59e364a902b6abfbe8884ea20444120ac767ddfba3e3e9b",
+      "url": "https://raw.githubusercontent.com/0xN0RMXL/BugBountySkills/e0414b47a7de0f5588adb9404de7c6975614f2c0/KNOWLEDGE_BASE/Subdomain_Takeover/reports-index.md"
+    },
+    "codebygk/hackerone-bug-bounty-reports": {
+      "acquisition": "https-download",
+      "bytes": 4590190,
+      "recorded_at": "2026-11-08T20:57:52.865122+00:00",
+      "repository": "https://github.com/codebygk/hackerone-bug-bounty-reports",
+      "revision": "cb5d63cd158c4601978fee9687d65385853019b5",
+      "sha256": "fc32c25136f84875e63d85942e2d5f59332057498243d6906d501631d8557ac8",
+      "url": "https://raw.githubusercontent.com/codebygk/hackerone-bug-bounty-reports/cb5d63cd158c4601978fee9687d65385853019b5/data/reports.json"
+    },
+    "reddelexc/hackerone-reports": {
+      "acquisition": "https-download",
+      "bytes": 2063332,
+      "recorded_at": "2026-11-08T20:42:55.715873+00:00",
+      "repository": "https://github.com/reddelexc/hackerone-reports",
+      "revision": "4c279ab93db2791adf4d6775d7539ee05b02cdb0",
+      "sha256": "a39d5a83345621fa81fc902e57a626eb6de7f03d6de58a55d7370e0116f092ca",
+      "url": "https://raw.githubusercontent.com/reddelexc/hackerone-reports/4c279ab93db2791adf4d6775d7539ee05b02cdb0/data.csv"
+    }
+  }
+}

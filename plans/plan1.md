@@ -1,3 +1,5 @@
+> **Status: superseded by `plan4.md`; kept for history.**
+
 # Plan 1 — Autonomous Offensive Security Agent (Terminal Draft)
 
 > Provenance: saved verbatim from terminal output on 2026-11-08, for comparison against

@@ -24,6 +24,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .extract import origin_of
 from .findings import Findings
+from .campaign import PolicyViolation
+from .net import FetchError
+from .reliability import ProviderError, SourceRunner
 
 REPO = Path(__file__).resolve().parents[1]
 KEV_URL = ("https://www.cisa.gov/sites/default/files/feeds/"
@@ -88,7 +91,8 @@ BODY_RULES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple((pid, re.compile(r
 ))
 CMS = {"wordpress", "drupal", "joomla"}
 ADDON = re.compile(r"\b(plugin|theme|extension|component|module)\b", re.I)
-RANGE_RX = re.compile(r"(?:(\d+(?:\.\d+)*)\s*)?(<=|<|=<)\s*(\d+(?:\.\d+)*)|(\d+(?:\.\d+)+)(?:\.x)?")
+RANGE_RX = re.compile(r"(?:(\d+(?:\.\d+)*[a-z]?)\s*)?(<=|<|=<)\s*(\d+(?:\.\d+)*[a-z]?)"
+                      r"|(?<![\w.])(\d+(?:\.\d+)+[a-z]?)(?![\w.])")
 
 
 @dataclass
@@ -97,6 +101,7 @@ class Sighting:
     product: str
     version: str
     evidence: List[str] = field(default_factory=list)
+    locations: List[str] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -108,7 +113,10 @@ class Sighting:
 
 
 def _vt(v: str) -> Tuple[int, ...]:
-    return tuple(int(x) for x in re.findall(r"\d+", v)[:4])
+    numbers = [int(x) for x in re.findall(r"\d+", v)[:4]]
+    suffix = re.search(r"[a-z]$", v.lower())
+    return tuple(numbers + [0] * (4 - len(numbers)) +
+                 [ord(suffix.group()) - ord("a") + 1 if suffix else 0])
 
 
 def _vcmp(a: str, b: str) -> int:
@@ -160,10 +168,12 @@ def collect_sightings(ctx) -> List[Sighting]:
     store, scope = ctx.store, ctx.campaign.scope
     seen: Dict[Tuple[str, str, str], Sighting] = {}
 
-    def add(origin: str, pid: str, ver: str, ev: str) -> None:
+    def add(origin: str, pid: str, ver: str, ev: str, location: str) -> None:
         s = seen.setdefault((origin, pid, ver), Sighting(origin, pid, ver))
         if ev not in s.evidence and len(s.evidence) < 5:
             s.evidence.append(ev)
+        if location not in s.locations and len(s.locations) < 10:
+            s.locations.append(location)
 
     for r in store.db.execute("SELECT url, resp_headers, body_sha256 FROM requests"
                               " WHERE status IS NOT NULL AND error IS NULL"):
@@ -177,7 +187,7 @@ def collect_sightings(ctx) -> List[Sighting]:
             if p.exists():
                 body = p.read_bytes()[:MAX_BODY_SCAN].decode("utf-8", "replace")
         for pid, ver, ev in extract_versions(headers, body):
-            add(origin_of(url), pid, ver, f"observed {url} -> {ev}")
+            add(origin_of(url), pid, ver, f"observed {url} -> {ev}", url)
     # imported httpx tech like "Nginx:1.18.0" (untrusted tool output, labelled as such)
     names = {v[0].lower(): k for k, v in PRODUCTS.items()} | {k: k for k in PRODUCTS}
     for a in store.assets(in_scope=True):
@@ -185,7 +195,7 @@ def collect_sightings(ctx) -> List[Sighting]:
             m = re.match(r"([^:]+):" + VER + "$", t.strip())
             if m and m.group(1).strip().lower() in names:
                 add(origin_of(a["value"]) if "://" in a["value"] else f"https://{a['value']}",
-                    names[m.group(1).strip().lower()], m.group(2), f"imported tech {t}")
+                    names[m.group(1).strip().lower()], m.group(2), f"imported tech {t}", a["value"])
     return list(seen.values())
 
 
@@ -201,10 +211,19 @@ def load_kev(ctx, kev_file: Optional[Path] = None, refresh: bool = False,
         if r.status != 200:
             raise RuntimeError(f"KEV feed HTTP {r.status}")
         data = json.loads(r.body)
+        if not isinstance(data, dict) or not isinstance(data.get("vulnerabilities"), list):
+            raise ValueError("invalid KEV feed envelope")
+        if any(not isinstance(v, dict) or not isinstance(v.get("cveID"), str)
+               for v in data["vulnerabilities"]):
+            raise ValueError("invalid KEV feed records")
         KEV_CACHE.parent.mkdir(parents=True, exist_ok=True)
         KEV_CACHE.write_bytes(r.body)
         log(f"KEV: fetched {len(data.get('vulnerabilities', []))} entries")
-    return list(data.get("vulnerabilities", []))
+    if (not isinstance(data, dict) or not isinstance(data.get("vulnerabilities"), list)
+            or any(not isinstance(v, dict) or not isinstance(v.get("cveID"), str)
+                   for v in data["vulnerabilities"])):
+        raise ValueError("invalid KEV feed records")
+    return list(data["vulnerabilities"])
 
 
 def kev_for(product: str, kev: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -212,7 +231,7 @@ def kev_for(product: str, kev: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     hits = []
     for v in kev:
         hay = f" {v.get('vendorProject', '')} {v.get('product', '')} ".lower()
-        if any(a in hay for a in aliases):
+        if any(re.search(r"(?<!\w)" + re.escape(a.strip()) + r"(?!\w)", hay) for a in aliases):
             hits.append(v)
     return hits
 
@@ -222,13 +241,19 @@ def searchsploit(query: str, binary: Optional[str] = None, timeout: int = 30) ->
     if not exe:
         return []
     try:
-        out = subprocess.run([exe, "--json", query], capture_output=True,
-                             text=True, timeout=timeout, check=False).stdout
-        data = json.loads(out or "{}")
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
-        return []
+        process = subprocess.run([exe, "--json", query], capture_output=True,
+                                 text=True, timeout=timeout, check=False)
+        if process.returncode:
+            raise ProviderError("searchsploit returned nonzero exit status")
+        data = json.loads(process.stdout)
+        if not isinstance(data, dict) or not isinstance(data.get("RESULTS_EXPLOIT"), list):
+            raise ProviderError("invalid SearchSploit result envelope")
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as exc:
+        raise ProviderError("SearchSploit unavailable or invalid output") from exc
     res = []
     for e in data.get("RESULTS_EXPLOIT", []) or []:
+        if not isinstance(e, dict) or not isinstance(e.get("Title"), str):
+            raise ProviderError("invalid SearchSploit record")
         res.append({"source": "exploit-db", "title": e.get("Title", ""),
                     "id": f"EDB-{e.get('EDB-ID', '')}", "type": e.get("Type", ""),
                     "date": e.get("Date_Published", ""),
@@ -242,18 +267,21 @@ def sploitus(ctx, query: str, log: Callable[[str], None] = lambda m: None) -> Li
     payload = {"query": query, "type": "exploits", "sort": "default", "title": False, "offset": 0}
     try:
         r = ctx.passive.post_json(SPLOITUS_URL, payload, "exploit-search")
-    except Exception as e:  # network/budget errors: degrade to the other sources
-        log(f"sploitus: {type(e).__name__}: {e}")
-        return []
+    except PolicyViolation:
+        raise
     if r.status != 200:
         log(f"sploitus: HTTP {r.status} (often bot protection); continuing without it")
-        return []
+        raise ProviderError(f"Sploitus returned HTTP {r.status}")
     try:
         data = json.loads(r.body)
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise ProviderError("invalid Sploitus JSON") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("exploits"), list):
+        raise ProviderError("invalid Sploitus result envelope")
     res = []
     for e in data.get("exploits", []) or []:
+        if not isinstance(e, dict) or not isinstance(e.get("title"), str):
+            raise ProviderError("invalid Sploitus record")
         text = f"{e.get('title', '')} {e.get('id', '')} {str(e.get('source', ''))[:20000]}"
         res.append({"source": "sploitus", "title": e.get("title", ""), "id": e.get("id", ""),
                     "type": e.get("type", ""), "date": e.get("published", ""),
@@ -309,45 +337,61 @@ def rank(s: Sighting, exploits: List[Dict[str, Any]], kev: List[Dict[str, Any]])
 def lookup(ctx, *, kev_file: Optional[Path] = None, use_kev: bool = True,
            use_sploitus: bool = True, use_searchsploit: bool = True,
            searchsploit_bin: Optional[str] = None,
-           log: Callable[[str], None] = print) -> Dict[str, Any]:
+           log: Callable[[str], None] = print, refresh: bool = False) -> Dict[str, Any]:
     fx = Findings(ctx)
     sightings = collect_sightings(ctx)
     kev_all: List[Dict[str, Any]] = []
     if use_kev and sightings:
         try:
             kev_all = load_kev(ctx, kev_file, log=log)
-        except Exception as e:
+        except PolicyViolation:
+            raise
+        except (FetchError, OSError, ValueError, RuntimeError) as e:
             log(f"KEV unavailable: {type(e).__name__}: {e}")
     have_ss = bool(use_searchsploit and (searchsploit_bin or shutil.which("searchsploit")))
     if use_searchsploit and not have_ss:
         log("searchsploit not installed (brew install exploitdb / apt install exploitdb); skipped")
-    stats = {"sightings": len(sightings), "leads_new": 0, "leads_updated": 0, "no_match": 0}
+    stats = {"sightings": len(sightings), "leads_new": 0, "leads_updated": 0,
+             "no_match": 0, "unresolved": 0, "provider_events": 0}
+    runner = SourceRunner(ctx)
     cache: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    event_refs: Dict[Tuple[str, str], List[int]] = {}
+    incomplete = set()
     for s in sorted(sightings, key=lambda x: (x.origin, x.product, x.version)):
         key = (s.product, s.version)
         if key not in cache:
             query = f"{s.name} {s.version}"
-            found = (searchsploit(query, searchsploit_bin) if have_ss else [])
-            if have_ss:  # product-only query: catches range titles like "jQuery < 3.5.0"
-                found += searchsploit(s.name, searchsploit_bin)
+            def relevant(found):
+                uniq: Dict[str, Dict[str, Any]] = {}
+                for e in found:
+                    if s.product in CMS and ADDON.search(e["title"]):
+                        continue
+                    e["covers"] = title_covers(e["title"], s.version)
+                    if e["covers"]:
+                        uniq.setdefault(e["source"] + e["id"], e)
+                return list(uniq.values())
+
+            sources = []
+            if have_ss:
+                # Product-only search catches titles like "jQuery < 3.5.0".
+                sources.append(("searchsploit", lambda: relevant(
+                    searchsploit(query, searchsploit_bin) + searchsploit(s.name, searchsploit_bin))))
             if use_sploitus:
-                found += sploitus(ctx, query, log)
-            uniq: Dict[str, Dict[str, Any]] = {}
-            for e in found:
-                if s.product in CMS and ADDON.search(e["title"]):
-                    continue  # plugin/theme advisories say nothing about the core version
-                e["covers"] = title_covers(e["title"], s.version)
-                if e["covers"] or set(c.upper() for c in e["cves"]) & {
-                        v.get("cveID", "").upper() for v in kev_all}:
-                    uniq.setdefault(e["source"] + e["id"], e)
-            cache[key] = list(uniq.values())
+                sources.append(("sploitus", lambda: relevant(sploitus(ctx, query, log))))
+            cache[key], events = runner.first_result(query, sources, refresh=refresh)
+            event_refs[key] = events
+            stats["provider_events"] += len(events)
+            if events and any(r[0] in ("failed", "suppressed") for r in ctx.store.db.execute(
+                    "SELECT state FROM provider_events WHERE id IN (%s)" % ",".join("?" for _ in events), events)):
+                incomplete.add(key)
         exploits = cache[key]
         kev = kev_for(s.product, kev_all) if kev_all else []
         if not exploits and not kev:
-            stats["no_match"] += 1
+            stats["unresolved" if key in incomplete or not event_refs.get(key) else "no_match"] += 1
             continue
         score, why = rank(s, exploits, kev)
         detail = {"version": s.version, "kind": s.kind, "evidence": s.evidence, "why": why,
+                  "provider_event_ids": event_refs.get(key, []), "lookup_incomplete": key in incomplete,
                   "exploits": exploits[:15],
                   "kev": [{k: v.get(k) for k in ("cveID", "vulnerabilityName", "dateAdded",
                                                   "knownRansomwareCampaignUse")} for v in kev[:15]],
@@ -356,7 +400,8 @@ def lookup(ctx, *, kev_file: Optional[Path] = None, use_kev: bool = True,
         title = (f"{s.name} {s.version} on {s.origin}: {len(exploits)} public exploit(s)"
                  + (f", {len(kev)} KEV" if kev else ""))
         fid, created = fx.add(title, "known-cve", asset_id=svc["id"] if svc else None,
-                              url=s.origin + "/", tech=[s.product], source="exploit-lookup",
+                              url=next((u for u in s.locations if ctx.scope.is_in(u)), s.origin + "/"),
+                              tech=[s.product], source="exploit-lookup",
                               priority=score, detail=detail,
                               dedup_key=f"cve:{s.origin}:{s.product}:{s.version}",
                               note="; ".join(why))

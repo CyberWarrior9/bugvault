@@ -1,0 +1,9 @@
+{
+  "acquisition": "https-download",
+  "bytes": 25830,
+  "recorded_at": "2026-11-11T23:00:55.564084+00:00",
+  "repository": "https://github.com/0xN0RMXL/BugBountySkills",
+  "revision": "e0414b47a7de0f5588adb9404de7c6975614f2c0",
+  "sha256": "9aeee31427ddb7edd59e364a902b6abfbe8884ea20444120ac767ddfba3e3e9b",
+  "url": "https://raw.githubusercontent.com/0xN0RMXL/BugBountySkills/e0414b47a7de0f5588adb9404de7c6975614f2c0/KNOWLEDGE_BASE/Subdomain_Takeover/reports-index.md"
+}

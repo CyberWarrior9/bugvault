@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: cloud-prerequisites
+expected_outcome: |
+  Separate initiating and outbound control, identify current metadata prerequisites,
+  block ungranted credential/protocol/execution branches and avoid hypothetical impact.

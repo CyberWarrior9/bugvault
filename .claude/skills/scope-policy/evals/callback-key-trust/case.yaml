@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: callback-key-trust
+expected_outcome: |
+  Distinguish Intruder's payload insertion from Collaborator Pro's listener, offer an
+  approved private listener or park the lead, require a served JWKS and a working
+  forged-token identity proof with a rejected-token control, and never treat DNS
+  callbacks or external export IDs as native fact-check proof of login bypass.

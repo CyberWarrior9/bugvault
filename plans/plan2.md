@@ -1,3 +1,5 @@
+> **Status: superseded by `plan4.md`; kept for history.**
+
 Below is a serious, production-style plan for an autonomous aggressive bug-hunting / red-team agent system. I’ll call it:
 
 AABBA — Autonomous Aggressive Bug Bounty Agent

@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
 from .campaign import norm_host
+from .csrfmeta import TOKENISH
 
 # ---------------------------------------------------------------- normalization
 
@@ -146,6 +147,8 @@ class JsFindings:
     chunks: List[str] = field(default_factory=list)
     sourcemap: Optional[str] = None
     hash_routing: bool = False
+    auth_gates: List[str] = field(default_factory=list)       # symbols for the runtime deep-pass
+    crypto_entrypoints: List[str] = field(default_factory=list)  # pre-encryption hook points
 
 
 def redact(secret: str) -> str:
@@ -171,6 +174,33 @@ def _balanced_object(text: str, start: int, limit: int = 600) -> str:
 _CALL_GLUE = re.compile(r"^[\s,+\w.$()\[\]]{0,60}$")
 _ROUTE_CTX = re.compile(r"(?:\bpath\s*[:=]\s*\{?\s*|(?:navigate|push|replace|navigateByUrl)"
                         r"\(\s*)$")
+_BODY_KEY_CTX = re.compile(r"\b(?:body|data|params|variables|payload|fields)\s*:\s*")
+_AUTH_GATE = re.compile(r"(?<![A-Za-z0-9_])(isAuthenticated|isLoggedIn|isAuthorized|isAdmin|"
+                        r"hasPermission|hasRole|checkPermission|requirePermission|requireRole|"
+                        r"hasAccess|canAccess|canEdit|canManage|currentUser|loggedIn)(?![A-Za-z0-9_])")
+_CRYPTO_CALL = re.compile(r"(?<![A-Za-z0-9_])(JSEncrypt|CryptoJS|encryptPayload|encryptBody|"
+                          r"signPayload|signBody|encryptRequest|getPublicKey|setPublicKey|"
+                          r"encrypt\(|decrypt\(|hmacSign)(?![A-Za-z0-9_])")
+
+
+def _leaf_keys(blob: str, depth: int, out: List[str]) -> None:
+    """Object-literal leaf keys, bounded depth; JSON.stringify(...) is unwrapped."""
+    if depth > 2 or len(out) >= 30:
+        return
+    inner = _balanced_object(blob, 0, limit=600)
+    if not inner:
+        return
+    for k in _OBJ_KEY.findall(inner):
+        if k.lower() not in _OPTION_KEYS and k not in out:
+            out.append(k)
+    for m in _BODY_KEY_CTX.finditer(inner):
+        tail = inner[m.end():].lstrip()
+        if tail.startswith("JSON.stringify"):
+            paren = tail.find("(", 0, 16)
+            if paren >= 0:
+                tail = tail[paren + 1:]
+        if tail[:1] in ("{", "[") or tail[:1] == "":
+            _leaf_keys(tail[:400], depth + 1, out)
 
 
 def _options_object(text: str, end: int) -> str:
@@ -204,6 +234,18 @@ def _window_params(text: str, end: int) -> List[str]:
     obj = _options_object(text, end)
     keys = []
     for k in _OBJ_KEY.findall(obj):
+        if k.lower() not in _OPTION_KEYS and k not in keys:
+            keys.append(k)
+    # request-body keys one level deeper: body:/data:/params:/variables: values
+    leaf: List[str] = []
+    for m in _BODY_KEY_CTX.finditer(obj):
+        tail = obj[m.end():].lstrip()
+        if tail.startswith("JSON.stringify"):
+            paren = tail.find("(", 0, 16)
+            if paren >= 0:
+                tail = tail[paren + 1:]
+        _leaf_keys(tail[:400], 1, leaf)
+    for k in leaf:
         if k.lower() not in _OPTION_KEYS and k not in keys:
             keys.append(k)
     return keys[:30]
@@ -256,6 +298,9 @@ def extract_from_js(text: str) -> JsFindings:
         for s in set(pat.findall(text)):
             f.secrets.append((kind, redact(s)))
     f.graphql_ops = sorted({f"{a} {b}" for a, b in _GQL_OP.findall(text)})[:300]
+    f.auth_gates = sorted(set(_AUTH_GATE.findall(text)))[:40]
+    f.crypto_entrypoints = sorted(set(
+        token.rstrip("(") for token in _CRYPTO_CALL.findall(text)))[:40]
     chunks = []
     for c in _CHUNK.findall(text):
         if c not in chunks and not c.startswith("http"):
@@ -300,11 +345,14 @@ class PageParser(HTMLParser):
         self.inline_scripts: List[str] = []
         self.links: List[str] = []
         self.forms: List[Dict] = []
+        self.standalone: List[Dict] = []   # named inputs OUTSIDE any <form>
         self.title = ""
         self._in_script = False
         self._in_title = False
         self._buf: List[str] = []
         self._form: Optional[Dict] = None
+        self._label: Optional[List[str]] = None
+        self._last_label = ""
 
     def handle_starttag(self, tag, attrs):
         a = {k.lower(): (v or "") for k, v in attrs}
@@ -321,10 +369,30 @@ class PageParser(HTMLParser):
             self.links.append(a["href"])
         elif tag == "form":
             self._form = {"action": a.get("action", ""), "method": (a.get("method") or "GET").upper(),
-                          "inputs": []}
+                          "inputs": [], "enctype": a.get("enctype", "").strip().lower()[:100],
+                          "token_fields": []}
             self.forms.append(self._form)
+        elif tag == "label":
+            self._label = []
         elif tag in ("input", "select", "textarea") and self._form is not None and a.get("name"):
             self._form["inputs"].append(a["name"])
+            if TOKENISH.search(a["name"]) and len(self._form["token_fields"]) < 10:
+                self._form["token_fields"].append(a["name"][:200])  # name only, never the value
+        elif tag in ("input", "select", "textarea") and self._form is None:
+            name = a.get("name") or a.get("id") or ""
+            if len(self.standalone) < 200:
+                self.standalone.append({
+                    "tag": tag, "name": name[:200],
+                    "type": a.get("type", "")[:40],
+                    "label": (self._last_label or a.get("placeholder")
+                              or a.get("aria-label") or "")[:120]})
+        elif a.get("contenteditable", "").lower() == "true" and self._form is None:
+            name = a.get("name") or a.get("id") or a.get("aria-label") \
+                or a.get("data-testid") or ""
+            if len(self.standalone) < 200 and (name or self._last_label):
+                self.standalone.append({
+                    "tag": "contenteditable", "name": name[:200], "type": "rich",
+                    "label": self._last_label[:120]})
         elif tag == "title":
             self._in_title = True
 
@@ -334,6 +402,10 @@ class PageParser(HTMLParser):
             self._in_script = False
         elif tag == "form":
             self._form = None
+        elif tag == "label":
+            if self._label is not None:
+                self._last_label = " ".join("".join(self._label).split())[:120]
+            self._label = None
         elif tag == "title":
             self._in_title = False
 
@@ -342,6 +414,8 @@ class PageParser(HTMLParser):
             self._buf.append(data)
         elif self._in_title:
             self.title += data
+        elif self._label is not None:
+            self._label.append(data)
 
 
 def parse_page(html: str) -> PageParser:

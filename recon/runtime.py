@@ -133,8 +133,10 @@ def job_runtime(ctx, svc: Dict[str, Any]) -> None:
     perms = a.get("perm_candidates", [])
     routes = [r["value"][len(origin):] for r in ctx.store.assets("route", in_scope=True)
               if r["value"].startswith(origin + "/")]
-    targets = [origin + "/"] + route_targets(origin, routes, bool(a.get("hash_routing")),
-                                             max_routes)
+    from .active import service_entries
+    targets = service_entries(ctx, svc) + route_targets(origin, routes, bool(a.get("hash_routing")),
+                                                        max_routes)
+    targets = list(dict.fromkeys(t for t in targets if ctx.scope.is_in(t)))[:max_routes + 1]
     requested: Set[str] = set()
     stats = {"api_calls": 0, "aborted_scope": 0, "aborted_write": 0, "aborted_nav": 0,
              "login_gated": 0, "pages": 0}

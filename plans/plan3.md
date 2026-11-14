@@ -1,3 +1,5 @@
+> **Status: superseded by `plan4.md`; kept for history. Its 31-module catalogue is still the reference used by plan4 and `Handover.md`.**
+
 # Plan 3 — Full-Coverage Autonomous Hunting Platform
 
 > Base: Plan 1 (terminal draft) architecture. Additions: every bug category from the mind-hunt

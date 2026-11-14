@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: blind-import
+expected_outcome: |
+  Block live execution without switching clients; preserve the unattributed DNS lead,
+  specify causal and negative controls, exact context and deferred trigger tests.

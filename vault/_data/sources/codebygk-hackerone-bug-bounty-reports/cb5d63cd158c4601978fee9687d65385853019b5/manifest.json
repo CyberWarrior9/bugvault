@@ -1,0 +1,9 @@
+{
+  "acquisition": "https-download",
+  "bytes": 4590190,
+  "recorded_at": "2026-11-08T20:57:52.865122+00:00",
+  "repository": "https://github.com/codebygk/hackerone-bug-bounty-reports",
+  "revision": "cb5d63cd158c4601978fee9687d65385853019b5",
+  "sha256": "fc32c25136f84875e63d85942e2d5f59332057498243d6906d501631d8557ac8",
+  "url": "https://raw.githubusercontent.com/codebygk/hackerone-bug-bounty-reports/cb5d63cd158c4601978fee9687d65385853019b5/data/reports.json"
+}

@@ -44,7 +44,7 @@ WAF_CDN_TAGS = {"cloudflare", "akamai", "cloudfront"}
 TAKEOVER_SIGNATURES: Dict[str, str] = {
     "github-pages": r"There isn't a GitHub Pages site here",
     "heroku": r"No such app|herokucdn\.com/error-pages/no-such-app",
-    "aws-s3": r"NoSuchBucket",
+    "aws-s3": r"NoSuchBucket|The specified bucket does not exist",
     "shopify": r"Sorry, this shop is currently unavailable",
     "fastly": r"Fastly error: unknown domain",
     "azure": r"404 Web Site not found|Error 404 - Web app not found",
@@ -53,6 +53,48 @@ TAKEOVER_SIGNATURES: Dict[str, str] = {
     "surge": r"project not found",
     "netlify": r"Not Found - Request ID:",
     "ghost": r"The thing you were looking for is no longer here",
+    "pantheon": r"The gods are wise, but do not know of the site which you seek",
+    "squarespace": r"DOMAIN NOT FOUND",
+    "cloudfront": r"Bad request\. We can't connect to the server for this app or website",
+    "vercel": r"The deployment could not be found|DEPLOYMENT_NOT_FOUND",
+    "feedpress": r"The feed has not been found",
+    "myjetbrains": r"is not a registered InCloud YouTrack",
+    "helpscout": r"No such help desk",
+    "wordpress-com": r"Do you want to register .+?\.wordpress\.com",
+}
+
+# CNAME suffixes of takeover-able providers (can-I-take-over-xyz class). A CNAME match
+# identifies the PROVIDER (candidate); the body signature or a missing A record confirms
+# the dangle. Not every provider suffix is always claimable — verify before reporting.
+TAKEOVER_CNAME_TARGETS: Dict[str, tuple] = {
+    "github-pages": ("github.io",),
+    "heroku": ("herokuapp.com", "herokudns.com", "herokussl.com"),
+    "aws-s3": ("amazonaws.com",),
+    "shopify": ("myshopify.com",),
+    "fastly": ("fastly.net",),
+    "azure": ("azurewebsites.net", "cloudapp.net", "cloudapp.azure.com", "azureedge.net",
+              "trafficmanager.net", "blob.core.windows.net", "azure-api.net"),
+    "zendesk": ("zendesk.com",),
+    "readme": ("readme.io",),
+    "surge": ("surge.sh",),
+    "netlify": ("netlify.com", "netlify.app"),
+    "ghost": ("ghost.io",),
+    "pantheon": ("pantheonsite.io",),
+    "squarespace": ("squarespace.com",),
+    "cloudfront": ("cloudfront.net",),
+    "vercel": ("vercel.app", "now.sh"),
+    "workers-dev": ("workers.dev",),
+    "tumblr": ("tumblr.com",),
+    "wordpress-com": ("wordpress.com",),
+    "gitbook": ("gitbook.io",),
+    "unbounce": ("unbouncepages.com",),
+    "webflow": ("webflow.io",),
+    "myjetbrains": ("myjetbrains.com",),
+    "feedpress": ("feedpress.it",),
+    "ngrok": ("ngrok.io",),
+    "statuspage": ("statuspage.io",),
+    "smugmug": ("smugmug.com",),
+    "cargocollective": ("cargocollective.com",),
 }
 
 # plan4 §4 packs, condensed: tag -> [(check_id, what to do)]
@@ -105,6 +147,15 @@ def is_spa(body: str, tags: List[str]) -> bool:
 
 def takeover_match(body: str) -> List[str]:
     return [svc for svc, pat in TAKEOVER_SIGNATURES.items() if re.search(pat, body[:100_000])]
+
+
+def takeover_providers_for_cname(cname: str) -> List[str]:
+    """Services whose takeover-able CNAME suffixes match this record's target."""
+    host = (cname or "").rstrip(".").lower()
+    if not host:
+        return []
+    return [svc for svc, suffixes in TAKEOVER_CNAME_TARGETS.items()
+            if any(host == s or host.endswith("." + s) for s in suffixes)]
 
 
 def packs_for(tags: List[str]) -> Dict[str, str]:

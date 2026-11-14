@@ -221,7 +221,7 @@ class CatalogTests(unittest.TestCase):
             self.assertIn("name: " + phase["id"], text)
             self.assertIn("description:", text)
             self.assertTrue(set(phase["handlers"]).issubset(JOB_NEEDS))
-        self.assertEqual(len(data["phases"]), 7)
+        self.assertEqual(len(data["phases"]), 8)
         self.assertIn("manual-only", render_catalog(data))
 
     def test_catalog_cli_needs_no_campaign_or_network(self):

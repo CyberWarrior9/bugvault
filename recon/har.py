@@ -9,17 +9,23 @@ HAR, or Burp/Caido). Import one HAR per canary account:
 
 Stored: endpoint, method, parameter NAMES, status, whether auth headers were present,
 and values ONLY for ID-like parameters (digits/UUID/hex) - that is the object graph
-used for cross-account IDOR candidates. Header values, cookies, tokens and bodies are
-never stored. Out-of-scope entries become intel.
+used for cross-account IDOR candidates. Header values, cookie values, tokens and
+bodies are never stored. Each capture also keeps value-free CSRF metadata
+(`recon/csrfmeta.py`): request MIME, auth mechanism, anti-CSRF token channel names,
+custom-header flags, Origin/Referer origins and Sec-Fetch values, Set-Cookie names
+with their attributes, and GraphQL operation type+name. Out-of-scope entries become
+intel.
 """
 from __future__ import annotations
 
 import json
 import re
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlsplit
 
+from .csrfmeta import GRAPHQL_ROUTE, graphql_operations, har_cookie_records, request_meta
 from .extract import id_like, is_static, origin_of, path_ext
 from .ingest import HTTP_METHODS, MAX_RECORDS, read_artifact
 
@@ -29,19 +35,37 @@ STATIC_MIME = ("image/", "font/", "text/css", "video/", "audio/")
 SENSITIVE_PARAM = re.compile(r"token|secret|password|passwd|cookie|auth|session|csrf|xsrf|otp|pin|key", re.I)
 
 
+MAX_JSON_DEPTH = 6
+MAX_JSON_LEAVES = 200
+
+
 def _flatten(obj: Any) -> List[Tuple[str, Any]]:
+    """Full-depth JSON leaf names as dotted/bracketed paths, bounded.
+
+    Arrays record the wrapper (``items[]``) *and* descend into the first element
+    (``items[0].id``): whether a value is array-wrapped matters for request-shape
+    variants. Depth and leaf count are capped; malformed shapes yield partial
+    results, never errors.
+    """
     out: List[Tuple[str, Any]] = []
-    if isinstance(obj, list):
-        obj = obj[0] if obj and isinstance(obj[0], dict) else {}
-    if not isinstance(obj, dict):
-        return out
-    for k, v in obj.items():
-        if isinstance(v, dict):
-            for k2, v2 in v.items():
-                out.append((f"{k}.{k2}", v2))
-        else:
-            out.append((str(k), v))
-    return out[:100]
+
+    def walk(node: Any, prefix: str, depth: int) -> None:
+        if depth > MAX_JSON_DEPTH or len(out) >= MAX_JSON_LEAVES:
+            return
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, f"{prefix}.{k}" if prefix else str(k), depth + 1)
+        elif isinstance(node, list):
+            if prefix:
+                out.append((f"{prefix}[]", node))
+            if node:
+                walk(node[0], f"{prefix}[0]" if prefix else "[0]", depth + 1)
+        elif prefix:
+            out.append((prefix, node))
+
+    if isinstance(obj, (dict, list)):
+        walk(obj, "", 0)
+    return out[:MAX_JSON_LEAVES]
 
 
 def request_params(req: Dict[str, Any]) -> Tuple[List[Tuple[str, Any]], List[Tuple[str, Any]], str]:
@@ -114,6 +138,17 @@ def import_har(ctx, path: Path, account: Optional[str], role: str = "", tenant: 
             if seg and id_like(seg):
                 ids[f"path[{i}]"] = seg
         names = [n for n, _ in q] + [n for n, _ in body]
+        resp_headers = resp.get("headers") if isinstance(resp.get("headers"), list) else []
+        csrf_meta = request_meta(
+            [(h.get("name"), h.get("value")) for h in req.get("headers") or []],
+            mime, [n for n, _ in q], [n for n, _ in body],
+            [(h.get("name"), h.get("value")) for h in resp_headers if isinstance(h, dict)],
+            [c.get("name") for c in req.get("cookies") or [] if isinstance(c, dict)]
+            if isinstance(req.get("cookies"), list) else [],
+            graphql_operations(url, (req.get("postData") or {}).get("text"))
+            if GRAPHQL_ROUTE.search(path_) else [])
+        if not csrf_meta["set_cookies"]:
+            csrf_meta["set_cookies"] = har_cookie_records(resp.get("cookies"))
         eid = ctx.add_endpoint(url, "har", method=method, params=names, extra={
             "auth_seen": auth, "id_params": sorted(ids),
             "accounts": [account] if account else [],
@@ -127,7 +162,12 @@ def import_har(ctx, path: Path, account: Optional[str], role: str = "", tenant: 
         if not ctx.store.add_observation(eid, method, account, {
             "query": [n for n, _ in q], "body": [n for n, _ in body], "ids": ids,
             "auth": auth}, resp.get("status"), "har",
-                capture_key=f"har:{import_id}:{index}", context=context):
+                capture_key=f"har:{import_id}:{index}", context={
+                    **context, "import_id": import_id, "record_index": index, "path": path_,
+                    "csrf_meta": csrf_meta,
+                    "response_text_sha256": hashlib.sha256(
+                        (resp.get("content") or {})["text"].encode()).hexdigest()
+                    if isinstance((resp.get("content") or {}).get("text"), str) else None}):
             stats["duplicate_samples"] += 1
     ctx.store.record_import_result(import_id, stats)
     return stats

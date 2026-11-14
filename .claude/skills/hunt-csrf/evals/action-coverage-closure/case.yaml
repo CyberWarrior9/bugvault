@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: action-coverage-closure
+expected_outcome: |
+  Three token attempts close one case, not the class; a GET reset and each GraphQL
+  mutation are separate actions tracked in the ledger.

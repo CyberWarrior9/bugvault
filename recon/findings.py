@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -80,7 +79,8 @@ TRANSITIONS = {
 }
 SEVERITIES = ("none", "low", "medium", "high", "critical")
 RELATIONS = ("yields-token", "yields-id", "yields-access", "authenticates-to",
-             "escalates-via", "pivots-to", "enables", "same-root-cause")
+             "escalates-via", "pivots-to", "enables", "same-root-cause",
+             "spawns", "derived-from", "proves")
 COVERAGE_FOR_STAGE = {"lead": "queued", "confirmed": "confirmed", "killed": "refuted"}
 
 # Unlinked findings on the same host whose classes commonly chain into a higher severity.
@@ -89,7 +89,13 @@ CHAIN_HINTS: Tuple[Tuple[str, str, str], ...] = (
     ("open-redirect", "ssrf", "redirect through an allowed host to bypass the SSRF allowlist"),
     ("xss", "ato", "XSS -> read token / change email from the victim session -> ATO"),
     ("xss", "csrf", "XSS defeats CSRF tokens -> any state change as the victim"),
+    ("xss", "access-control", "XSS on an admin surface -> act on admin-only objects"),
+    ("html-injection", "ato", "attacker structure in rendered content -> token/session capture -> ATO"),
+    ("sqli", "ato", "SQLi login bypass -> authenticated session of a supplied test account"),
+    ("ssti", "access-control", "template evaluation -> code-exec-equivalent proof -> scope-capped action"),
     ("csrf", "ato", "CSRF on email/password/MFA change -> ATO"),
+    ("csrf", "ssrf", "CSRF on webhook/integration settings -> server-side fetch to a chosen URL"),
+    ("subdomain-takeover", "csrf", "control of a same-site sibling origin -> SameSite bypass -> CSRF"),
     ("idor-bola", "ato", "IDOR on email/phone/reset fields -> ATO"),
     ("idor-bola", "access-control", "read another tenant's object, then act on it as that role"),
     ("mass-assignment", "access-control", "set role/tenant fields -> privilege escalation"),
@@ -155,6 +161,8 @@ class Findings:
             if not self.ctx.campaign.scope.is_in(url):
                 raise StageError(f"{url} is out of scope; findings are only tracked in scope")
             host = host or (urlsplit(url).hostname or "").lower()
+        else:
+            raise StageError("a finding requires an in-scope URL or URL-bearing asset")
         sev = _clean_severity(severity)
         ts = now()
         cur = self.db.execute(
@@ -201,6 +209,8 @@ class Findings:
              severity: Optional[str] = None) -> Dict[str, Any]:
         f = self.get(fid)
         cur = f["stage"]
+        if to not in TERMINAL and f["url"] and not self.ctx.campaign.scope.is_in(f["url"]):
+            raise StageError("finding URL is no longer in scope; re-scope before further validation")
         if to not in STAGES:
             raise StageError(f"stage must be one of {STAGES}")
         if to not in TRANSITIONS.get(cur, set()):
@@ -313,7 +323,9 @@ class Findings:
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
         dst = self.evidence_dir / (sha + (p.suffix if len(p.suffix) <= 8 else ""))
         if not dst.exists():
-            shutil.copyfile(p, dst)
+            dst.write_bytes(data)  # copy the exact bytes hashed, not a second read of the source
+        elif hashlib.sha256(dst.read_bytes()).hexdigest() != sha:
+            raise StageError("stored evidence hash mismatch; existing artifact was not overwritten")
         return {"sha256": sha, "name": p.name, "bytes": len(data),
                 "stored": str(dst.relative_to(self.ctx.campaign.root))}
 
@@ -335,6 +347,10 @@ class Findings:
                               (f["asset_id"], f["bug_class"])).fetchone()
         if stage == "lead" and cur and cur["status"] not in ("untested",):
             return  # never downgrade a worked row back to queued
+        others = self.db.execute("SELECT stage FROM findings WHERE asset_id=? AND bug_class=? AND id!=?",
+                                 (f["asset_id"], f["bug_class"], fid)).fetchall()
+        if stage == "killed" and any(r["stage"] not in DEAD for r in others):
+            return  # killing one hypothesis never refutes another live/confirmed finding
         self.store.set_coverage(f["asset_id"], f["bug_class"], status, f"finding #{fid}")
 
 
@@ -357,7 +373,9 @@ def write_findings(ctx, ts: Optional[str] = None) -> Path:
     allf = fx.all()
     by_stage = Counter(f["stage"] for f in allf)
     md = [f"---\ntags: [campaign, findings]\nprogram: {camp.program}\ngenerated: {ts or now()}\n---\n",
-          f"# Findings: {camp.program}\n",
+           f"# Findings: {camp.program}\n",
+           "Artifact gates check file presence and distinct hashes only. Stage labels are "
+           "validator/operator attestations, not machine-verified exploitability.\n",
           "Stages: lead → confirmed (replay + negative control) → impact-proven → reported → "
           "accepted / duplicate / informative / n-a, or killed. Move with "
           "`python3 -m recon finding move <campaign> <id> <stage> ...`.\n",
@@ -375,6 +393,13 @@ def write_findings(ctx, ts: Optional[str] = None) -> Path:
             md.append("- " + " ".join(parts) + "\n")
     else:
         md.append("_none: link findings with `finding link <campaign> <src> <relation> <dst>`_\n")
+    md.append("\n## Chain todolist (ready first; `recon chain status` for detail)\n")
+    from .chain import ChainLedger
+    todo = [c for c in ChainLedger(ctx).overview()["chains"] if c["state"] != "complete"]
+    md.append(_table(["state", "chain", "proven", "next class", "action"],
+                     [[c["state"], c["name"], f"{c['proven_steps']}/{c['total_steps']}",
+                       (c["next"] or {}).get("class", "-"), c["action"] or "-"]
+                      for c in todo[:40]]))
     hints = fx.chain_hints()
     md.append("\n## Chain hints (same host, not yet linked)\n")
     md.append(_table(["host", "a", "b", "why it can chain"],

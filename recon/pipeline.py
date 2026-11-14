@@ -122,8 +122,15 @@ class Recon:
         attrs["bases"] = list(attrs.get("bases", [])) + [basis]
         existed = self.store.find_asset("endpoint", key) is not None
         aid = self.add("endpoint", key, source=source, attrs=attrs)
-        self.store.operation(aid, method, {"params": attrs["params"], "sources": [source],
-                                           "bases": attrs["bases"]})
+        op_attrs: Dict[str, Any] = {"params": attrs["params"], "sources": [source],
+                                    "bases": attrs["bases"]}
+        # Per-method representation/auth hints (CSRF action contexts); endpoint attrs
+        # merge across methods, so these stay on the operation as well.
+        for hint in ("content_types", "form_enctypes", "csrf_token_fields",
+                     "spec_content_types", "spec_auth"):
+            if isinstance((extra or {}).get(hint), list) and extra[hint]:
+                op_attrs[hint] = [str(v) for v in extra[hint]][:20]
+        self.store.operation(aid, method, op_attrs)
         self.store.variant(aid, method, parts.path, query_keys(url))
         if not existed and source != "version-sibling":
             self._version_siblings(key)
@@ -148,7 +155,14 @@ class Recon:
 
     def add_seed(self, seed: str) -> None:
         if "://" in seed:
-            self.add("service", origin_of(seed), source="seed")
+            self.scope.check(seed)
+            aid = self.add("service", origin_of(seed), source="seed", in_scope=True,
+                           attrs={"entry_urls": [seed], "has_scoped_entry": True})
+            # A service is an origin with an allowed entry, not authorization for '/'.
+            self.store.db.execute("UPDATE assets SET in_scope=1 WHERE id=?", (aid,))
+            self.store.db.commit()
+            for kind in ON_NEW["service"]:
+                self.enqueue(kind, aid)
         elif _is_ip(seed):
             self.add("host", seed.strip("[]"), source="seed")
         else:

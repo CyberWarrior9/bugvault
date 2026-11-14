@@ -20,6 +20,7 @@ from recon.cli import main as cli_main
 from recon.findings import Findings, StageError, write_findings
 from recon.pipeline import Recon
 from recon.vulnintel import extract_versions, lookup, title_covers
+from recon.net import FetchError
 from tests.test_recon import write_campaign
 
 HTML = ('<html><head><meta name="generator" content="WordPress 5.8.1" />'
@@ -214,7 +215,7 @@ class LookupTests(unittest.TestCase):
 
             def fake_post(url, payload, purpose, **k):
                 sent.append(payload)
-                raise PolicyViolation("offline test")
+                raise FetchError("offline fixture provider unavailable")
             ctx.passive.post_json = fake_post
             stats = lookup(ctx, kev_file=kev, searchsploit_bin=str(ss), log=lambda m: None)
             self.assertEqual(lab.hits, hits_before)  # lookup never touches the target

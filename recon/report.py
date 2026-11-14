@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlsplit
 
+from .csrf import report_rows as csrf_report_rows
+from .fields import field_claims_section
 from .score import applicable_classes, freshness, is_inferred_only, sources, version_index
+from .skillmap import SKILLS_DIR_REL, skills_for
 from .store import COVERAGE_STATES, now
 
 
@@ -81,6 +84,42 @@ def idor_candidates(store) -> List[List[Any]]:
     return rows
 
 
+def context_param_matrix(store) -> List[List[Any]]:
+    """Presence summaries never pool different principals, roles, tenants or workflow states."""
+    groups = defaultdict(list)
+    for observation in store.observations():
+        context = observation["context"]
+        key = (observation["endpoint_id"], observation["method"], observation["account"] or "",
+               context.get("role", ""), context.get("tenant", ""), context.get("workflow_state", ""))
+        groups[key].append(observation)
+    rows = []
+    for key, observations in sorted(groups.items()):
+        counts = Counter(p for o in observations for p in set(o["params"].get("query", []) +
+                                                              o["params"].get("body", [])))
+        rows.append(list(key) + [len(observations), sorted(p for p, n in counts.items() if n == len(observations)),
+                                sorted(p for p, n in counts.items() if n < len(observations))])
+    return rows
+
+
+def context_comparisons(store) -> List[Dict[str, Any]]:
+    """Suggest explicit comparable capture pairs, not automatic authorization conclusions."""
+    groups = defaultdict(list)
+    for observation in store.observations():
+        context = observation["context"]
+        # Unknown roles/workflows cannot silently be treated as equivalent contexts.
+        if not observation["account"] or not context.get("role") or not context.get("workflow_state"):
+            continue
+        key = (observation["endpoint_id"], observation["method"], context["role"], context["workflow_state"])
+        groups[key].append(observation)
+    rows = []
+    for key, observations in sorted(groups.items()):
+        principals = {(o["account"], o["context"].get("tenant", "")) for o in observations}
+        if len(principals) >= 2:
+            rows.append({"endpoint_id": key[0], "method": key[1], "role": key[2], "workflow_state": key[3],
+                         "principals": sorted(principals), "observation_ids": [o["id"] for o in observations]})
+    return rows
+
+
 def write_reports(ctx) -> List[Path]:
     store, camp = ctx.store, ctx.campaign
     root = camp.root
@@ -132,16 +171,26 @@ def write_reports(ctx) -> List[Path]:
     md.append(_table(["candidate", "newer version seen"],
                      [[e["value"], e["attrs"].get("sibling_of", [])] for e in sibs[:60]]))
 
-    md.append("\n## Cross-account IDOR candidates (from HAR imports)\n")
+    md.append("\n## Aggregate cross-account mapping leads (legacy, not context-equivalent)\n")
     md.append("Different object IDs per account are mapping leads, not IDOR evidence. "
               "Any later validation requires permitted controlled accounts and separate evidence.\n\n")
     md.append(_table(["id", "method", "endpoint", "accounts", "id params"],
                      idor_candidates(store)))
 
-    md.append("\n## Parameter matrix (multi-sample diff)\n")
+    md.append("\n## Aggregate parameter presence (not context-equivalent)\n")
     md.append("Presence in captured samples does not prove server-side required/optional rules.\n\n")
     md.append(_table(["id", "method", "endpoint", "samples", "always present", "sometimes present"],
                       param_matrix(store)[:120]))
+    md.append("\n## Context-specific parameter presence\n")
+    md.append("Contexts are not pooled. Even repeated presence does not prove a server-side rule.\n\n")
+    md.append(_table(["family", "method", "account", "role", "tenant", "workflow", "samples",
+                      "always present", "sometimes present"], context_param_matrix(store)[:200]))
+    md.append("\n## Explicit comparison groups\n")
+    md.append("Same known role/workflow, distinct account/tenant principals. Observation IDs link "
+              "back to captures; these are comparison candidates, not evidence of a violation.\n\n")
+    md.append(_table(["family", "method", "role", "workflow", "account/tenant", "observation ids"],
+                     [[r["endpoint_id"], r["method"], r["role"], r["workflow_state"],
+                       r["principals"], r["observation_ids"]] for r in context_comparisons(store)[:200]]))
 
     md.append("\n## Method-specific operations\n")
     md.append("Endpoint families group ID-shaped paths; operations preserve HTTP methods. "
@@ -181,9 +230,17 @@ def write_reports(ctx) -> List[Path]:
 
     other = [f for f in facts if f not in leads]
     md.append("\n## Observations\n")
+    md.append("Narrative observed/inferred labels below are not machine-checked response predicates.\n\n")
     md.append(_table(["kind", "asset", "summary"],
                      [[f["kind"], f["asset_value"], f["summary"]] for f in other[:120]]))
 
+    from .factcheck import ResponseFacts
+    md.append("\n## Response-backed predicate checks\n")
+    md.append("Rechecked offline against stored responses. Supported means only the exact status/header/"
+              "byte predicate is supported, not XSS, IDOR or other exploitability.\n\n")
+    md.append(_table(["fact", "response", "outcome", "predicate claim", "reason", "capture basis"],
+                     [[f["fact_id"], f["request_id"], f["outcome"], f["claim"], f["reason"], f["capture_basis"]]
+                      for f in ResponseFacts(ctx).recent(50)]))
     failed = [j for j in jobs if j["state"] == "failed"]
     md.append("\n## Failed jobs\n")
     md.append(_table(["job", "asset", "error"],
@@ -197,6 +254,7 @@ def write_reports(ctx) -> List[Path]:
     score_of = {e["id"]: s for s, _, e in ranked}
     untested = sorted((c for c in cov if c["status"] == "untested"),
                       key=lambda c: (-score_of.get(c["asset_id"], 0), c["asset_value"]))
+    csrf = csrf_report_rows(ctx)
     cv = [f"---\ntags: [campaign, coverage]\nprogram: {camp.program}\ngenerated: {ts}\n---\n",
           f"# Coverage: {camp.program}\n",
            "Coarse endpoint-family × bug-class backlog. Recon seeds `untested` rows only; "
@@ -204,13 +262,37 @@ def write_reports(ctx) -> List[Path]:
            "method/role/tenant/workflow security-test completeness. Update a row with:\n\n"
           "`python3 -m recon cov <campaign> <asset_id> <class> "
           "<tested|confirmed|refuted|n-a|queued> --note \"...\"`\n",
+          f"The `skill` column names the skill in `{SKILLS_DIR_REL}/` to load before testing "
+          "the row (primary first). Skills are instructions, not test results.\n",
           "## By class\n",
           _table(["class"] + list(COVERAGE_STATES),
                  [[k] + [v.get(s, 0) for s in COVERAGE_STATES] for k, v in sorted(by_cls.items())]),
           f"\n## Untested, freshest first ({len(untested)} rows)\n",
-          _table(["asset id", "endpoint/service", "class", "why applicable"],
-                 [[c["asset_id"], c["asset_value"], c["bug_class"], c["reason"]]
+          _table(["asset id", "endpoint/service", "class", "why applicable", "skill"],
+                 [[c["asset_id"], c["asset_value"], c["bug_class"], c["reason"],
+                   skills_for(c["bug_class"]) or "-"]
                   for c in untested[:200]]),
+          "\n## Module coverage claims\n",
+          "Per-module parameter-coverage claims (field-ledger trigger matrix). A `full` "
+          "claim is accepted by the engine only when every trigger cell is captured or "
+          "n-a; `partial` was stamped automatically because cells were missing. "
+          "Missing cells are named.\n",
+          _table(["module", "claim", "missing triggers", "updated"],
+                 field_claims_section(ctx)),
+          "\n## CSRF action coverage\n",
+          "Per-origin action x context x case ledger (`python3 -m recon csrf status`). "
+          "Fieldless actions, GET mutations, GraphQL operations and realtime handshakes are "
+          "actions of their own; open = untested, in progress or reopened by a changed "
+          "capture. A coarse `csrf` row above never closes open action cases. Work the next "
+          "cases with `python3 -m recon csrf plan <campaign> --action <id>`.\n",
+          _table(["origin", "actions", "captured", "declared only", "contexts", "open cases",
+                  "observed", "negative", "blocked/inconclusive", "stale"], csrf["hosts"]),
+          "\n### Next CSRF cases\n",
+          _table(["action", "context", "target", "priority", "case", "readiness",
+                  "open variants"], csrf["next"]),
+          *(["\n### Coarse rows contradicted by open action cases\n",
+             _table(["asset id", "coarse status", "open action cases"], csrf["coarse"])]
+            if csrf["coarse"] else []),
           "\n## Worked rows\n",
           _table(["asset id", "endpoint/service", "class", "status", "note"],
                  [[c["asset_id"], c["asset_value"], c["bug_class"], c["status"], c["note"]]

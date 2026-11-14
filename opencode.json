@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "burp": {
+        "type": "remote",
+        "url": "http://127.0.0.1:9876/mcp",
+        "codemode": false,
+        "timeout": {"startup": 15000, "catalog": 15000, "execution": 60000}
+      }
+    }
+  },
+  "permissions": [
+    {"action": "burp_*", "resource": "*", "effect": "ask"},
+    {"action": "burp_get_proxy_*", "resource": "*", "effect": "allow"},
+    {"action": "burp_get_organizer_*", "resource": "*", "effect": "allow"},
+    {"action": "burp_get_scanner_issues", "resource": "*", "effect": "allow"},
+    {"action": "burp_get_active_editor_contents", "resource": "*", "effect": "allow"},
+    {"action": "burp_url_*", "resource": "*", "effect": "allow"},
+    {"action": "burp_base64_*", "resource": "*", "effect": "allow"},
+    {"action": "burp_generate_random_string", "resource": "*", "effect": "allow"}
+  ]
+}

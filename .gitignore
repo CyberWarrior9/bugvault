@@ -21,3 +21,6 @@ vault/10-Campaigns/*
 
 # exploit-lookup cache (CISA KEV feed)
 .recon-cache/
+
+# Operator-supplied third-party MCP bridge; local-only, not part of the MIT source.
+tools/burp/mcp-proxy.jar

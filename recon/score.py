@@ -9,6 +9,7 @@ import re
 from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import urlsplit
 
+from .csrfmeta import ACTION_PARAMS, MUTATING, split_camel
 from .extract import VERSION_SEG
 
 LINKED_SOURCES = {"html", "sitemap", "har", "form", "oidc"}
@@ -32,11 +33,57 @@ URLISH = {"url", "uri", "link", "href", "src", "redirect", "redirect_uri", "redi
           "continue", "dest", "destination", "target", "callback", "callback_url", "webhook",
           "webhook_url", "feed", "image_url", "imageurl", "avatar_url", "proxy", "fetch",
           "domain", "host", "site", "endpoint", "origin"}
+SSRF_SURFACE = re.compile(r"(?:^|[/_-])(?:fetch|proxy|import|webhooks?|callbacks?|subscribe|"
+                          r"feeds?|unfurl|embed|oembed|pingback|trackback)(?:[/_-]|$)", re.I)
+SSRF_FIELDS = {re.sub(r"[^a-z0-9]", "", p) for p in URLISH} | {
+    "image", "avatar", "sourceurl", "destinationurl", "callbackurl", "webhookurl",
+    "fetchurl", "remoteurl", "baseurl", "apiurl", "documenturl", "fileurl", "targeturl",
+    "feedurl", "serviceurl", "consumeruri", "subscribeurl", "shards"}
+
+
+def ssrf_parameters(params) -> List[str]:
+    """Name heuristics only, including camelCase and JSON/form leaf fields; never a fetch proof."""
+    matched = []
+    for value in params:
+        if not isinstance(value, str):
+            continue
+        leaves = re.findall(r"[a-z][a-z0-9_-]*", value.lower())
+        leaf = re.sub(r"[^a-z0-9]", "", leaves[-1]) if leaves else ""
+        if leaf in SSRF_FIELDS or leaf.endswith(("url", "uri")):
+            matched.append(value)
+    return sorted(set(matched))
+
+
 REDIRECTISH = {"redirect", "redirect_uri", "redirect_url", "redirecturl", "return", "returnto",
                "return_to", "returnurl", "return_url", "next", "continue", "dest",
                "destination", "goto", "to", "r", "u"}
 FILEISH = {"file", "filename", "filepath", "file_path", "path", "doc", "document", "template",
            "include", "dir", "folder", "download", "attachment", "lang", "locale"}
+
+# Content-ish fields: the classic stored-XSS / HTML-injection carriers (first name,
+# last name, username, bio, comment, ...). Leaf-name normalized like SSRF_FIELDS.
+CONTENTISH = {"bio", "biography", "description", "comment", "comments", "content", "message",
+              "text", "body", "html", "about", "summary", "notes", "note", "markdown",
+              "signature", "title", "name", "firstname", "first_name", "lastname",
+              "last_name", "username", "nickname", "displayname", "display_name", "city",
+              "address", "headline", "status"}
+# Template-y fields on render/export surfaces: SSTI candidates.
+TEMPLATEISH = {"template", "tpl", "theme", "lang", "locale", "format", "layout", "view",
+               "style", "render", "engine", "skin", "preview_id", "jinja", "velocity",
+               "freemarker", "twig"}
+
+
+def _leaf(value: str) -> str:
+    words = re.findall(r"[a-z][a-z0-9_-]*", value.lower())
+    return re.sub(r"[^a-z0-9]", "", words[-1]) if words else ""
+
+
+def content_parameters(params) -> List[str]:
+    return sorted({p for p in params if isinstance(p, str) and _leaf(p) in CONTENTISH})
+
+
+def template_parameters(params) -> List[str]:
+    return sorted({p for p in params if isinstance(p, str) and _leaf(p) in TEMPLATEISH})
 
 
 def sources(a: Dict[str, Any]) -> Set[str]:
@@ -120,8 +167,11 @@ def applicable_classes(e: Dict[str, Any]) -> Dict[str, str]:
         out["access-control"] = "API endpoint: call unauthenticated / as lower role"
     if INTERNAL.search(path):
         out["access-control"] = "internal/admin-type path: unguarded-sibling check"
-    if params & URLISH:
-        out["ssrf"] = f"URL-like params: {sorted(params & URLISH)}"
+    ssrf_fields = ssrf_parameters(a.get("params", []))
+    if ssrf_fields:
+        out["ssrf"] = f"URL-like params (candidate, not a fetch proof): {ssrf_fields}"
+    elif SSRF_SURFACE.search(path):
+        out["ssrf"] = "fetch/import/proxy/webhook surface (candidate; verify server-side behavior)"
     if params & REDIRECTISH:
         out["open-redirect"] = f"redirect-like params: {sorted(params & REDIRECTISH)}"
     if params & FILEISH:
@@ -129,10 +179,26 @@ def applicable_classes(e: Dict[str, Any]) -> Dict[str, str]:
     if params:
         out["xss"] = "reflected/stored input"
         out["sqli"] = "parameterized input"
+        content = content_parameters(a.get("params", []))
+        if content:
+            out["html-injection"] = f"content-ish fields (stored/rendered input): {content[:6]}"
+        tpl = template_parameters(a.get("params", []))
+        if tpl:
+            out["ssti"] = f"template-ish fields on a render path: {tpl[:6]}"
     if writes:
         out["csrf"] = f"state-changing methods {sorted(writes)}"
         if writes & {"POST", "PUT", "PATCH"}:
             out["mass-assignment"] = "write endpoint: add privileged fields"
+    elif urlsplit(e["value"]).scheme in ("ws", "wss"):
+        out["csrf"] = "realtime handshake: a cookie-authenticated connection can carry actions"
+    elif not methods - {"GET", "HEAD"}:
+        # GET-only or method unknown: a state-change verb or action selector still makes
+        # it a CSRF action candidate (a cross-site GET navigation carries Lax cookies).
+        verbs = sorted({m.group(0).lower() for m in
+                        MUTATING.finditer(split_camel(urlsplit(e["value"]).path))})
+        selectors = sorted(params & ACTION_PARAMS)
+        if verbs or selectors:
+            out["csrf"] = f"GET/unknown-method action with a state-change signal: {(verbs + selectors)[:4]}"
     if AUTH_PATH.search(path):
         out["ato"] = "auth/account flow"
         if re.search(r"otp|mfa|2fa|totp|verif", path):

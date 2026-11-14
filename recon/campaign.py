@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import unquote, urlsplit
 
 MODES = ("passive", "active", "loud")
+HTTP_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 ALLOWED_SCHEMES = ("http", "https", "ws", "wss")
 
 
@@ -43,10 +44,10 @@ def norm_host(host: str) -> str:
     return host
 
 
-def norm_path(path: str) -> str:
-    """Decode (up to 3 rounds), resolve dot segments, lowercase.
+def norm_path(path: str, casefold: bool = True) -> str:
+    """Decode (up to 3 rounds), resolve dot segments, optionally lowercase.
 
-    Used for matching only, so `/a/../LOGOUT` and `/%6cogout` both match a `/logout` rule.
+    Exclusions are conservatively case-insensitive; includes preserve path case.
     """
     p = path or "/"
     for _ in range(3):
@@ -58,7 +59,7 @@ def norm_path(path: str) -> str:
     p = posixpath.normpath("/" + p.lstrip("/"))
     if p.startswith("//"):
         p = "/" + p.lstrip("/")
-    return p.lower()
+    return p.lower() if casefold else p
 
 
 def _split_hostport(hostpart: str) -> str:
@@ -80,7 +81,8 @@ class Rule:
     path: Optional[str] = None
     port: Optional[int] = None
 
-    def matches(self, scheme: str, host: str, path: str, port: Optional[int] = None) -> bool:
+    def matches(self, scheme: str, host: str, path: str, port: Optional[int] = None,
+                ignore_path_case: bool = False) -> bool:
         if self.scheme and scheme != self.scheme:
             return False
         if self.port is not None and port != self.port:
@@ -98,7 +100,8 @@ class Rule:
             if host != self.host:
                 return False
         if self.path and self.path != "/":
-            if not (path == self.path or path.startswith(self.path + "/")):
+            allowed_path = self.path.lower() if ignore_path_case else self.path
+            if not (path == allowed_path or path.startswith(allowed_path + "/")):
                 return False
         return True
 
@@ -108,7 +111,7 @@ def parse_rule(raw: str) -> Rule:
     if not s:
         raise ConfigError("empty scope rule")
     if s.startswith("/"):
-        p = norm_path(s)
+        p = norm_path(s, casefold=False)
         if p == "/":
             raise ConfigError("path rule '/' would match everything")
         return Rule(raw=raw, path=p)
@@ -151,7 +154,7 @@ def parse_rule(raw: str) -> Rule:
             port = 443 if scheme in ("https", "wss") else 80
     except ValueError as e:
         raise ConfigError(f"invalid scope port: {raw!r}") from e
-    rule = Rule(raw=raw, scheme=scheme, path=norm_path(path) if path else None, port=port)
+    rule = Rule(raw=raw, scheme=scheme, path=norm_path(path, casefold=False) if path else None, port=port)
     if host.startswith("*."):
         rule.suffix = norm_host(host[2:])
     else:
@@ -194,9 +197,9 @@ class Scope:
             raise OutOfScope(f"scheme {scheme!r} not allowed: {url}")
         if not host:
             raise OutOfScope(f"no host in {url!r}")
-        path = norm_path(parts.path)
+        path = norm_path(parts.path, casefold=False)
         for r in self.exclude:
-            if r.matches(scheme, host, path, port):
+            if r.matches(scheme, host, path.lower(), port, ignore_path_case=True):
                 raise OutOfScope(f"{url} matches out_of_scope rule {r.raw!r}")
         for r in self.include:
             if r.matches(scheme, host, path, port):
@@ -233,6 +236,12 @@ class Policy:
     max_body_bytes: int = 5_000_000
     max_requests: int = 1000
     max_seconds: float = 600.0
+    max_campaign_requests: int = 10_000
+    allowed_ip_ranges: List[str] = field(default_factory=list)
+    denied_ip_ranges: List[str] = field(default_factory=list)
+    # Read-only by default. Write methods are an explicit operator grant for programs
+    # whose rules permit active/state-changing testing.
+    allowed_methods: List[str] = field(default_factory=lambda: ["GET", "HEAD"])
 
     def allows(self, need: str) -> bool:
         return MODES.index(self.mode) >= MODES.index(need)
@@ -288,6 +297,10 @@ class Campaign:
             max_body_bytes=int(pol.get("max_body_bytes", 5_000_000)),
             max_requests=int(pol.get("max_requests", 1000)),
             max_seconds=float(pol.get("max_seconds", 600)),
+            max_campaign_requests=int(pol.get("max_campaign_requests", 10_000)),
+            allowed_ip_ranges=list(pol.get("allowed_ip_ranges", []) or []),
+            denied_ip_ranges=list(pol.get("denied_ip_ranges", []) or []),
+            allowed_methods=[str(m).upper() for m in pol.get("allowed_methods", ["GET", "HEAD"])],
         )
         if policy.mode not in MODES:
             raise ConfigError(f"policy.mode must be one of {MODES}, got {policy.mode!r}")
@@ -297,7 +310,29 @@ class Campaign:
             raise ConfigError("policy budgets: max_requests must be 1..100000; max_seconds in (0,86400]")
         if not 1 <= policy.max_body_bytes <= 50_000_000:
             raise ConfigError("policy.max_body_bytes must be 1..50000000")
+        if not 1 <= policy.max_campaign_requests <= 1_000_000:
+            raise ConfigError("policy.max_campaign_requests must be 1..1000000")
+        try:
+            for network in policy.allowed_ip_ranges + policy.denied_ip_ranges:
+                ipaddress.ip_network(network)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("IP egress ranges must be valid IPv4/IPv6 CIDRs") from exc
+        if (not policy.allowed_methods or len(set(policy.allowed_methods)) != len(policy.allowed_methods)
+                or any(m not in HTTP_METHODS for m in policy.allowed_methods)
+                or "GET" not in policy.allowed_methods):
+            raise ConfigError("policy.allowed_methods must be a unique non-empty subset of "
+                              f"{sorted(HTTP_METHODS)} and include GET")
+        if any(m not in ("GET", "HEAD") for m in policy.allowed_methods) and policy.mode == "passive":
+            raise ConfigError("policy.allowed_methods write methods require mode active or loud")
         seeds = list(raw.get("seeds", []) or [])
+        collection = raw.get("collection", {})
+        if not isinstance(collection, dict):
+            raise ConfigError("collection must be an object")
+        for key, default, maximum in (("max_pages", 1, 100), ("max_depth", 2, 5)):
+            value = collection.get(key, default)
+            if (not isinstance(value, int) or isinstance(value, bool)
+                    or value < (1 if key == "max_pages" else 0) or value > maximum):
+                raise ConfigError(f"collection.{key} has an invalid bound")
         for s in seeds:
             target = s if "://" in s else f"https://{s}/"
             if not scope.is_in(target):
@@ -307,7 +342,16 @@ class Campaign:
                    runtime=dict(raw.get("runtime", {}) or {}), raw=raw)
 
 
-def scope_template(program: str, seeds: List[str], mode: str) -> Dict[str, Any]:
+def scope_template(program: str, seeds: List[str], mode: str,
+                   allowed_methods: Optional[List[str]] = None) -> Dict[str, Any]:
+    # Extra methods are an explicit init-time grant, not implied by active mode.
+    methods = list(dict.fromkeys(["GET", "HEAD"] + [m.upper() for m in allowed_methods or []]))
+    if mode not in MODES:
+        raise ConfigError(f"policy.mode must be one of {MODES}, got {mode!r}")
+    if any(m not in HTTP_METHODS for m in methods):
+        raise ConfigError(f"policy.allowed_methods must use supported methods: {sorted(HTTP_METHODS)}")
+    if mode == "passive" and any(m not in ("GET", "HEAD") for m in methods):
+        raise ConfigError("policy.allowed_methods beyond GET/HEAD require mode active or loud")
     in_scope: List[str] = []
     for s in seeds:
         if "://" in s:
@@ -325,6 +369,7 @@ def scope_template(program: str, seeds: List[str], mode: str) -> Dict[str, Any]:
         "_rules_help": "Paste the program's testing rules, one per line; they are copied "
                        "verbatim into the agent briefs (python3 -m recon brief).",
         "excluded_bug_classes": [],
+        "collection": {"max_pages": 1, "max_depth": 2},
         "policy": {
             "mode": mode,
             "_mode_help": "passive = never contact target (crt.sh, wayback only); "
@@ -334,6 +379,13 @@ def scope_template(program: str, seeds: List[str], mode: str) -> Dict[str, Any]:
             "max_rps": 2,
             "max_requests": 1000,
             "max_seconds": 600,
+            "max_campaign_requests": 10000,
+            "allowed_ip_ranges": [],
+            "denied_ip_ranges": [],
+            "allowed_methods": methods,
+            "_allowed_methods_help": "Read-only recon by default. Add POST/PUT/PATCH/DELETE/OPTIONS "
+                                     "only when the program's written rules permit state-changing "
+                                     "tests; every request is still scope-, rate- and budget-checked.",
             "user_agent": "bugvault-recon (authorized bug bounty; contact: YOUR_HANDLE)",
             "headers": {},
             "verify_tls": True,
@@ -349,5 +401,16 @@ def scope_template(program: str, seeds: List[str], mode: str) -> Dict[str, Any]:
             "live_api": False,
             "max_routes": 60,
             "max_clicks_per_page": 15,
+        },
+        "ssrf": {
+            "depth_grants": [],
+            "_depth_grants_help": "Deep-branch techniques the program's written rules allow: "
+                                  "dns, internal, cloud, credential, protocol, execution, or [\"all\"]. "
+                                  "Grants unlock hunt-ssrf case branches and chain ranking; every "
+                                  "destination still passes scope checks and live tests still use "
+                                  "the dedicated browser through Burp.",
+            "callback_hosts": [],
+            "_callback_hosts_help": "Exact hosts or *.suffix patterns approved for controlled "
+                                    "callback receivers (offline evidence matching only).",
         },
     }
