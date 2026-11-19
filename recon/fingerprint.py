@@ -64,8 +64,8 @@ TAKEOVER_SIGNATURES: Dict[str, str] = {
 }
 
 # CNAME suffixes of takeover-able providers (can-I-take-over-xyz class). A CNAME match
-# identifies the PROVIDER (candidate); the body signature or a missing A record confirms
-# the dangle. Not every provider suffix is always claimable — verify before reporting.
+# identifies a possible PROVIDER; a body signature or failed address lookup is a
+# lead, not confirmed dangling DNS or claimability. Verify before reporting.
 TAKEOVER_CNAME_TARGETS: Dict[str, tuple] = {
     "github-pages": ("github.io",),
     "heroku": ("herokuapp.com", "herokudns.com", "herokussl.com"),

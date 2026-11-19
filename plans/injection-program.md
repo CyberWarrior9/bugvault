@@ -549,8 +549,8 @@ to `hunt-sqli`, which says nothing about templates; this build gives them their 
 
 | Source | Snapshot | Take | Do not import |
 |---|---|---|---|
-| HackTricks fork `b4rdia/HackTricks`, `pentesting-web/ssti-server-side-template-injection/` (README, jinja2-ssti, el-expression-language) | branch `9d61d9142c350c1f6188ffb3c5e6e34407cf8438`; folder last touched `1d1f2554c96d0ae01edfa5d45d6af25199669f97` (2023-01-13); CC BY-NC 4.0 | ideas: detect → identify → exploit; plaintext vs code context and expression break-out; transform probes between random markers; error-based identification; read-only exploration of documented default objects; the **sandbox model** (engines that are code, engines with a documented sandbox, logic-less engines) with version hardening; the **filter taxonomy** (alternate delimiters/expression kinds, attribute access without dots/underscores/brackets/quotes, string building from parts and character codes, encoding layers, strings smuggled through other parameters/headers) | all prose, tables, payloads, gadget chains, subclass-index hunting, images; the 2015 decision-tree image (wrong leaves); tplmap as a primary tool |
-| mind-hunt `skills/hunt-ssti/SKILL.md` (local, 51 lines) | SHA-256 `30e314db34f5324c2ee0f2d9a20d02f0bd9b0076e8c46a348125be539b392766`; MIT, © 2026 MindflareX | the **ladder** (detect → fingerprint → escalate), the surface list (email templates, PDF/report generators, CMS previews, error pages, reflected headers), the **chains** (→ execution, → XSS when sandboxed, → SSRF through fetch features, file upload → SSTI through re-rendered documents), the **Pre-Severity Gate** (sandboxed evaluation is a medium template injection, not critical RCE; prove execution with a unique marker or OOB callback first) | its RCE payloads and payload tree; the false fingerprints (`#{7*7}`→Mako, `${7*7}`→Velocity, `*{7*7}`→Spring Thymeleaf, `7*'7'` as Jinja2-only); payout figures; references to `hunt-rce`, `hunt-file-upload`, `security-arsenal`, `triage-validation` (not BugVault skills) |
+| HackTricks fork `b4rdia/HackTricks`, `pentesting-web/ssti-server-side-template-injection/` (README, jinja2-ssti, el-expression-language) | branch `9d61d9142c350c1f6188ffb3c5e6e34407cf8438`; folder last touched `1d1f2554c96d0ae01edfa5d45d6af25199669f97` (2023-01-13); CC BY-NC 4.0 | ideas: detect → identify → exploit; plaintext vs code context and expression break-out; transform probes between random markers; error-based identification; read-only exploration of documented default objects; the **sandbox model** (engines that are code, engines with a documented sandbox, logic-less engines) with version hardening; the **filter taxonomy** (alternate delimiters/expression kinds, attribute access without dots/underscores/brackets/quotes, string building from parts and character codes, encoding layers, strings smuggled through other parameters/headers); the *concepts* behind escape paths (dunder/attribute walking, `__subclasses__` indexing, string building from parts/codes, sandbox-policy holes) — as technique categories to re-author in `ESCAPES` (§11a), never as copied chains | all prose, tables, **payload text and gadget chains as data** (re-authored instead); subclass-index hunting as a primary technique (data only, gated); images; the 2015 decision-tree image (wrong leaves); tplmap as a primary tool |
+| mind-hunt `skills/hunt-ssti/SKILL.md` (local, 51 lines) | SHA-256 `30e314db34f5324c2ee0f2d9a20d02f0bd9b0076e8c46a348125be539b392766`; MIT, © 2026 MindflareX | the **ladder** (detect → fingerprint → escalate), the surface list (email templates, PDF/report generators, CMS previews, error pages, reflected headers), the **chains** (→ execution, → XSS when sandboxed, → SSRF through fetch features, file upload → SSTI through re-rendered documents), the **Pre-Severity Gate** (sandboxed evaluation is a medium template injection, not critical RCE; prove execution with a unique marker or OOB callback first) | its RCE payloads and payload tree **as copied text** (depth concepts re-authored below); the false fingerprints (`#{7*7}`→Mako, `${7*7}`→Velocity, `*{7*7}`→Spring Thymeleaf, `7*'7'` as Jinja2-only); payout figures; references to `hunt-rce`, `hunt-file-upload`, `security-arsenal`, `triage-validation` (not BugVault skills) |
 | BugBountySkills `KNOWLEDGE_BASE/SSTI/` (10 files) | commit `0accf5fdc71ec7f03273aebb99268a8609f8dfd4`; MIT, © 2026 0xN0RMXL | report leads only, re-checked against HackerOne: #1104349 (sign-up name evaluated in the welcome-email subject, engine unknown, later emails stopped after probing), #423541 (merchant-editable notification templates; Handlebars per the reporter's write-up); triage leads #1265344 (AngularJS client-side, closed as self-DoS), #904672 (app compiling user strings in its own test page, informative), #942103 (development-only ERB test server, severity none) | the templated payload/bypass/cheatsheet files, the misattributed Rails excerpt, every statistic and bounty figure |
 | Primary engine documentation (27 engines; `engine_fingerprints.md`) | official docs, tagged doc/source/inferred | the engine table in code: delimiters, arithmetic, string×integer behaviour, comment syntax, built-ins, error signatures, sandbox modes | — |
 
@@ -594,6 +594,13 @@ the path; uploaded DOCX/ODT/XLSX mail-merge, SVG/HTML/Markdown renders and file 
 When: after L4 capture (the field and its workflow exist in the field ledger), one probe
 set per field. Stored fields are probed once on a supplied test account, then every
 later capture and delivered artifact is traced.
+
+Post-execution depth: proving execution is not the end of the hunt. Once the
+`execution` rung is proven, the ladder continues with the depth rungs of §11c
+(`env-read`, `cred-read`, `token-use`, `lateral`) — read-only, marker-tracked, each
+ceiling-bounded. A finding that stops at "a marker ran" reports the existence of a
+shell and forfeits the impact it owns; the depth rungs are where critical findings
+are separated from medium template-injection tickets.
 
 ### 10d. The ladder (case families; per input × surface)
 
@@ -646,9 +653,14 @@ Grants live in `scope.json` as `ssti.depth_grants` (`context`, `file-read`, `exe
   the literal control. Evaluation is proven when the error twin's response differs (5xx,
   different template) while the valid twin and the control match.
 - **Boolean error**: the conditional twin raises only when the condition is true.
-- **Side channel** (time, OOB): needs an execution-capable expression, so it runs only under
-  the `execution` grant, with the approved receiver and the set's marker, bounded delays
-  (≤10 s, repeated with a control).
+- **Side channel** (time, OOB): needs an execution-capable expression. Timing runs only
+  under the `execution` grant (bounded delays ≤10 s, repeated with a control). **OOB-DNS
+  with the set's marker encoded in the subdomain is the standard execution-proof channel
+  for blind surfaces** — it is not gated by the `execution` grant, because the grant
+  exists to permit *post-execution depth*, and a grant that requires the proof it is
+  meant to enable makes blind execution unprovable by construction. The OOB channel uses
+  the approved receiver from `ssti.callback_hosts` (fallback `ssrf.callback_hosts`),
+  marker-bound via `callbacks.py`, with a negative control per attempt.
 - Email/PDF surfaces that cannot be observed stay `inconclusive`, never negative.
 
 ### 10g. Stored and second-order SSTI
@@ -667,10 +679,15 @@ Grants live in `scope.json` as `ssti.depth_grants` (`context`, `file-read`, `exe
 - Map first: `recon waf plan --host H --set ssti` emits template elements (delimiters,
   structural characters, commonly filtered identifiers); outcomes are recorded with
   `recon waf record --kind template|char|identifier`.
-- The bypass families (categories, no payload lists), chosen per blocked element:
+- The bypass families (categories; **generated, not listed**), chosen per blocked element:
   delimiter alternative, character avoidance, string building, encoding layer, parameter
-  smuggling, context break-out. `ssti plan` lists the blocked elements and the families
-  that apply; each attempt is one `filter-bypass` variant.
+  smuggling, context break-out. `ssti plan` generates the candidates in code with the
+  same adaptive-split algorithm as §10e: the candidate set is the techniques consistent
+  with (fingerprinted engine, sandbox mode, version evidence, blocked elements from the
+  WAF profile); the next suggested variant is the one that splits the remaining
+  hypotheses most evenly; per-blocked-element avoidance tables are derived in code, not
+  pasted from sources. Each attempt is one `filter-bypass` variant with the applying
+  family and the eliminated hypothesis recorded.
 
 ### 10i. Identification and the sandbox model
 
@@ -689,7 +706,7 @@ Grants live in `scope.json` as `ssti.depth_grants` (`context`, `file-read`, `exe
 | From | To | Link | Notes |
 |---|---|---|---|
 | file upload (template editors, mail-merge documents, SVG/HTML/Markdown renders, file names) | SSTI | `enables` | probes inside the uploaded file; the rendered output is traced |
-| SSTI (sandboxed or logic-less) | stored XSS | `spawns` | template output unescaped in a browser surface; hand-off to `hunt-xss` |
+| SSTI (sandboxed or logic-less) | stored XSS | `spawns` | template output unescaped in a browser surface; hand-off to `hunt-xss`. The **mail client is a first-class sink, not just a "later page"**: CRLF/header injection via evaluated subject, and JS execution *inside the mail client* of an admin/staff member who opens a welcome/invite/reset/notification email. That is the chain `ssti-stored → email-client-xss → admin ATO` — the impact is client-side execution on a staff surface the program's blind-XSS allowance already covers, not "emails broke" (#1104349 shows H1 treats sign-up-name → email-subject evaluation as reportable; this report states the execution, not the broken pipeline) |
 | SSTI evaluated only client-side | CSTI/XSS | — | not SSTI; `hunt-xss` |
 | SSTI with a fetch feature (include/import from URL, renderer fetches, custom helpers) | SSRF | `pivots-to` | approved receiver first; internal reach under `hunt-ssrf` depth grants |
 | SSTI | information disclosure | `yields-token` | context/config read under the `context` grant, redacted |
@@ -730,11 +747,14 @@ an escape is proven.
 ### 10m. Tools
 
 `recon ssti` (offline), Burp (Repeater as diagnostics, history export for the trace),
-`recon waf`, Burp Collaborator or an approved receiver (only under `execution` for OOB).
-Operator-run detection tools under the standing execution plan: TInjA (detection and
-identification, SSTI and CSTI, no blind) and SSTImap in detection modes (its shell/file
-modes exceed most program rules); tplmap is legacy (unmaintained since 2018). Tool output
-is a lead until traced.
+`recon waf`, Burp Collaborator or an approved receiver. OOB-DNS is the standard
+blind execution-proof channel per §10f (receiver-approved, not grant-gated); timing and
+**post-execution tool modes are grant-gated**: TInjA (detection and identification, SSTI
+and CSTI, no blind) runs free under the standing execution plan; SSTImap's shell/file
+modes run only under the `execution`/`file-read` grants with their artifacts traced like
+any probe output; tplmap is legacy (unmaintained since 2018) — a lead, never primary.
+Tool output is a lead until traced; grant-gated tool runs are recorded as
+`ssti_case_events` with the grant cited.
 
 ### 10n. Build order and verification
 
@@ -748,3 +768,144 @@ is a lead until traced.
 
 A real-engine lab (Jinja2 in `.venv`) is optional and needs approval to install the
 package.
+
+## 11. §10 Offensive-Depth Addendum (black-hat impact pass, 2026-11-13)
+
+The plan's ceilings were self-imposed: it stopped at "sandbox recorded, version noted"
+and "one marker-bearing benign proof." This section removes the four self-imposed caps
+without touching the §8 compliance layer (test-account-only, no destructive statements,
+rate limits, marker discipline, realism gate), which stays what makes every rung
+submittable. "No limitations" applies to **depth of proof**, not to the program's rules.
+
+### 11a. `ESCAPES` table (alongside `ENGINES`, in `recon/ssti.py`)
+
+Rows: engine × sandbox-mode × version-range → escape-technique class, independently
+authored from documented sandbox policies, CVEs and changelogs (per-source provenance
+in `references/sources.md`; CC BY-NC wording still not copied — concepts only).
+Technique classes (categories in code, no source payload text): dunder/attribute
+walking, `__subclasses__` indexing, string building from codes/parts, method-validator
+holes, policy/configuration gaps. Each row records the **evidence** (changelog version,
+CVE, documented policy change) so a recommendation is never a guess. `recon ssti plan`
+consumes it: given (fingerprinted engine, sandbox mode, version evidence, blocked
+elements) it emits the consistent techniques, ranked by the same information-split rule
+as §10e. The `sandbox` rung output changes from "recorded" to "recorded + applicable
+escape classes named with their version evidence."
+
+### 11b. Break the execution-proof circularity
+
+Per §10f: OOB-DNS with the set's marker encoded in the subdomain is the standard
+execution-proof channel for blind surfaces, approved-receiver-based, not grant-gated.
+`ssti.depth_grants.execution` gates **post-execution depth** (11c), not the proof that
+execution exists. The old wording (side-channel only under grant) made blind execution
+unprovable by construction: the grant was the one thing the proof was needed to earn.
+
+### 11c. Post-execution depth rungs
+
+New case families, all read-only, all marker-tracked, each with its own grant and
+ceiling. Recorded as `ssti_case_events` with the grant cited; artifacts hash-bound in
+`.recon/ssti-evidence/` as elsewhere.
+
+| Case | Rung | Grant | Machine evidence for `observed` |
+|---|---|---|---|
+| `env-read` | read | `context` (existing) | variable **names** (keys only, values redacted) between markers in a captured response/OOB; control run without the probe |
+| `cred-read` | read | `file-read` | marker-delimited excerpt of a path from the data-path list (`.env` patterns, IMDS `/metadata/` keys, k8s SA token file) in a capture or approved-receiver artifact; the list is data in `recon/ssti.py` (paths, not contents) |
+| `token-use` | execution | `execution` | a **read-only** exercise of an obtained token on one in-scope internal endpoint, marker-bound, single attempt, response class recorded — closes the loop the realism gate's question 3 anticipates (leaked key's actual policy) with proof instead of assumption |
+| `lateral` | execution | `execution` | OOB from a host other than the render origin (internal-network marker subdomain), approved receiver only; one-shot, then stop |
+
+Ceiling: these rungs sit under §10k's existing ceilings (read → high; execution →
+critical). `token-use`/`lateral` evidence upgrades an execution finding from "code
+executes" to "code executes **and reaches X**," which is the difference between a
+critical ticket and an incident. The realism gate applies unchanged: each depth rung's
+artifact must answer the three questions before `impact-proven`.
+
+### 11d. Export pipelines as a distinct surface class
+
+PDF/report generators (iText, wkhtmltopdf, Jasper, report-builders) get their own
+fingerprint space in `ENGINES`/`ESCAPES`: separate delimiters, separate sandbox model,
+separate error signatures. The canary map already tracks export surfaces; probe sets
+treat an export render as its own `ssti_surfaces` row (engine priors differ from the
+app's template engine), and a negative on the app surface never closes the export
+surface.
+
+### 11e. What does not change
+
+Severity ceilings (§10k) — H1-aligned; the new rungs slot under them. §8 compliance
+layer — intact; it is what makes the deeper rungs reportable. Rate limits, no
+destructive statements, test-account-only, no other-users' data. The pre-severity gate
+stays a gate: a finding with no depth rung proven still reports at its proven ceiling,
+and a depth rung proven without its grant cited is refused by `ssti record`.
+
+### 11f. Build deltas (append to §10n phases)
+
+| Phase | Files | Tests |
+|---|---|---|
+| F1 — escapes | `recon/ssti.py` `ESCAPES`; `references/engines.md` + new `references/escapes.md` generated from it (equality test); `sources.md` provenance | Unit: every ESCAPE row carries version evidence; `plan` ranks by split; plan output for (Jinja2, SandboxedEnvironment, 3.1.4) names its applicable classes; engine with no documented escape emits none (no invented techniques) |
+| F2 — OOB decoupling | `recon/ssti.py` case/grant rules; `callbacks.py` reuse for blind OOB binding | Unit: blind surface + approved receiver yields an execution-proof plan without the grant; grant-gated timing still refused; OOB events bind via callbacks.py marker rules; SSRF suite stays green |
+| F3 — depth rungs | `recon/ssti.py` four new case families + grants in `scope.json` schema; `chain.py` `ssti-exec` terminal steps extended | Unit: each rung's observed evidence requires the cited grant; `token-use` refuses a non-read-only exercise; realism gate parks a depth rung whose artifact fails question 3 |
+| F4 — export surfaces | `recon/ssti.py` surface class + engine-prior tables | Unit: export render opens its own surface row; app-surface negative does not close it |
+| F5 — lab | extend §10n phase-E lab: emulated sandboxed engine with one documented policy hole (ast-whitelisted, no `eval`); blind endpoint whose only proof channel is OOB; export surface with a different delimiter | Lab asserts: escape recommended by `plan` is the one that works in the lab; OOB proof lands without grant; depth rung refused without grant; severity ceiling enforced |
+
+Status: partially implemented (F3 offline subset). Phase F order follows §10's
+build; nothing in F1–F5 blocks the existing §10 phases.
+
+## 12. Implementation checkpoint (2026-11-14)
+
+**Partial, not a completed §10/§11 build.** The checkout now has `hunt-ssti` and an
+offline `recon/ssti.py` detection/evidence subset: one stable set per field and
+observed context (asset/method/location/field/account/role/tenant/workflow),
+six bounded arithmetic/literal-control probes across two shared syntax families,
+independent response/view/email/export/async/DOM surface rows, raw capture and
+campaign-local artifact tracing, ordered request-receipt correlation, reclassification
+and hash verification, detect/confirm/stored record gates, family-only fingerprints,
+`ssti` skill dispatch, tiered candidate seeding and a bounded coverage section naming
+missing contexts and coarse-coverage conflicts. A legacy set-key migration preserves
+existing set/surface IDs. No target traffic is sent. A receipt on a later view or
+artifact does **not** machine-prove causality, account ownership or server-side
+engine identity.
+
+The §11c depth ledger is now **partially implemented offline** for `cred-read`,
+`token-use` and `lateral`:
+
+- `ssti.depth_grants` accepts `context`, `file-read`, `execution` or `["all"]` and
+  fails closed on unknown/repeated entries. `ssti.callback_hosts` falls back to
+  `ssrf.callback_hosts`.
+- `cred-read` requires the `file-read` grant, a listed data path, a confirmed
+  evaluation on the surface, two distinct artifacts, a redaction marker and no
+  obvious secret signature. It raises the ceiling to high.
+- `token-use` requires the `execution` grant, a prior observed `cred-read` on the
+  set, one read-only `GET`/`HEAD`/`OPTIONS` exercise on an in-scope plain URL carrying
+  the set's attempt marker, one declared attempt and a redacted artifact.
+- `lateral` requires the `execution` grant, a prior observed `token-use`, an approved
+  callback host (different from the render origin) carrying the attempt marker, one
+  declared attempt and an OOB artifact containing that marker. Both execution rungs
+  raise the ceiling to critical.
+- Depth artifacts are copied by SHA-256 into `.recon/ssti-evidence/`; `verify`
+  re-hashes and reclassifies them. No credential value, token or host action is
+  performed by this module. The operator still supplies and validates the captured
+  evidence.
+- `plan` prints grant gates, attempt markers, listed data paths and read-only
+  methods. `record --severity` derives its ceiling from proven depth rungs; it is not
+  a finding-severity integration.
+
+The remaining §10 work is **not landed**: 27-engine fingerprint tables and generated
+references, the full case ladder, blind/OOB channel parsing and correlation, WAF
+bypass generator, PDF/MIME parsing, real-engine or browser lab, and skill-behaviour
+evals. The coarser field ledger still deduplicates role/tenant/workflow variants;
+the SSTI ledger and its coverage report keep them separate, and the field state does
+not close until the currently observed contexts are confirmed. §11 F1/F2 and the
+`env-read` rung are not implemented; F3 is limited to the three rungs above and does
+not integrate the chain realism gate. F4 has only separate export surface rows, not
+export engine priors. F5's escape lab is not implemented. The broader §1 runtime
+deep-pass and live-campaign checks also remain deferred as recorded in §7. No
+campaign is configured, so nothing here is validated against a target, a real
+mail/export pipeline or an approved receiver. The existing model-routing gateway
+remains unbuilt.
+
+Verification: 388 unit/owned-loopback tests pass in `.venv`; system Python runs the
+same suite with two optional Playwright tests skipped; `git diff --check` is clean.
+Tests include an arithmetic-only loopback render lab (reflected, literal,
+stored notification and CSV export), distinct context keys, legacy migration,
+unrelated/late receipt rejection, raw entity-encoded output rejection, incomplete
+captures, grant/ceiling enforcement, read-only single-attempt constraints, callback
+host validation and artifact/receipt tamper rejection. This verifies the subset, not
+"everything" in the plan.

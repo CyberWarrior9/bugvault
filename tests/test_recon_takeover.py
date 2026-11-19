@@ -123,6 +123,19 @@ class ProbeTakeoverTests(unittest.TestCase):
             job_probe(self.ctx, asset)
         self.assertFalse(self._facts("takeover-impact-context"))
 
+    def test_cookie_scope_does_not_guess_last_two_public_suffix_labels(self):
+        from recon.active import _takeover_chain_context
+        self.ctx.store.record_request("GET", "https://app.example.co.uk/", 200, "fixture", [],
+                                      {"set-cookie": "preference=inert; Domain=example.co.uk; Secure"})
+        self.assertTrue(_takeover_chain_context(self.ctx, "old.example.co.uk"))
+        self.assertFalse(_takeover_chain_context(self.ctx, "other.co.uk"))
+
+    def test_host_only_cookie_on_candidate_is_not_wildcard_context(self):
+        from recon.active import _takeover_chain_context
+        self.ctx.store.record_request("GET", "https://dead.acme.test/", 200, "fixture", [],
+                                      {"set-cookie": "preference=inert; Secure"})
+        self.assertFalse(_takeover_chain_context(self.ctx, "dead.acme.test"))
+
 
 if __name__ == "__main__":
     unittest.main()

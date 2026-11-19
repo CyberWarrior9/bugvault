@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 from .fields import FieldLedger
 from .har import SENSITIVE_PARAM
 
-INPUT_CLASSES = ("xss", "sqli", "csrf", "mass-assignment", "open-redirect",
+INPUT_CLASSES = ("xss", "sqli", "ssti", "csrf", "mass-assignment", "open-redirect",
                  "file-read", "ssrf", "idor-bola")
 MAX_INPUTS = 500
 

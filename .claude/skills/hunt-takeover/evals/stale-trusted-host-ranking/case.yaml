@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: stale-trusted-host-ranking
+expected_outcome: |
+  Candidate A receives higher conditional investigation priority because of current
+  production trust references, while its historical provider status, namespace gap
+  and missing grants/path remain blockers. The answer separates ranking from
+  severity/readiness, explains that CSP is not injection, handles cookie/public-suffix
+  semantics correctly, and leaves CORS/OAuth/HSTS/mail effects unproven. It preserves
+  current, archived and certificate provenance without fetching or broadcasting data.

@@ -7,21 +7,223 @@ Runnable Python 3.9+ recon foundation, extending the existing BugVault engine. D
 | Component | BugVault implemented | ARTEX reference |
 |---|---|---|
 | LLM agents used by recon | **0** | 1 planner + configurable workers; default 3 workers = **4 ongoing instances**, plus a one-shot goals decomposer |
-| Scheduling | **1 sequential deterministic scheduler**, **8 job handlers** | Event-driven LLM planner/frontier and concurrent workers |
+| Scheduling | **1 sequential deterministic scheduler**, **9 job handlers** (including opt-in retained JS assets) | Event-driven LLM planner/frontier and concurrent workers |
 | Recon skills | **8 repository capability guides** below; **0 automatically invoked LLM skills** | `api-recon` enabled for default workers; `bbot-recon`, `scopesentry`, browser support optional/configurable |
 | External artifact adapters | **5 scanner formats + HAR** | BBOT events, ScopeSentry sync and live traffic extension |
 | Model routing | Not implemented | Agent bindings/fallbacks configurable |
 
-**All 18 BugVault skills live in one folder: `.claude/skills/<id>/SKILL.md`** at the repository root — the eight recon phase guides below plus ten hunting skills: five authentication skills (`hunt-auth-bypass`, `hunt-ato`, `hunt-mfa-bypass`, `hunt-oauth`, `hunt-saml`), `hunt-ssrf`, `hunt-idor`, `hunt-xss`, `hunt-sqli` and `hunt-csrf`. OpenCode and Claude Code discover that folder automatically in sessions opened inside this repository and offer a skill to the model when a task matches its description; verified with OpenCode 2.2.6, where a fresh session given a login `ato` row and asked to load the applicable skill, without being told its name, chose and loaded `hunt-auth-bypass`. The recon engine itself loads no skill. Qwen/GLM/OpenAI review agents are **not running**; credentials, endpoints, model IDs and a separate bounded review adapter would be required.
+**All 26 BugVault skills live in one folder: `.claude/skills/<id>/SKILL.md`** at the repository root — eight recon phase guides plus eighteen hunting skills: five authentication skills (`hunt-auth-bypass`, `hunt-ato`, `hunt-mfa-bypass`, `hunt-oauth`, `hunt-saml`), `hunt-ssrf`, `hunt-idor`, `hunt-xss`, `hunt-sqli`, `hunt-csrf`, `hunt-ssti`, `hunt-access-control`, `hunt-file-upload`, `hunt-js-bundle`, `hunt-business-logic`, `hunt-race-conditions`, `hunt-takeover` and `hunt-cloud-misconfig`. OpenCode and Claude Code discover that folder automatically in sessions opened inside this repository and offer a skill to the model when a task matches its description; verified with OpenCode 2.2.6, where a fresh session given a login `ato` row and asked to load the applicable skill, without being told its name, chose and loaded `hunt-auth-bypass`. The recon engine itself loads no skill. Qwen/GLM/OpenAI review agents are **not running**; credentials, endpoints, model IDs and a separate bounded review adapter would be required.
+
+### Cloud misconfiguration: partial offline slice
+
+`recon cloud import|generate|sync|plan|show|record|status|verify` supports a bounded
+reference and operator-evidence workflow. `import` reads text placed **inside a
+campaign**; `sync` reads existing in-scope stored responses (never refetches them).
+The parser retains source hashes/spans and safe S3/GCS/Blob, ARN, Azure resource,
+RUM/Cognito/Firebase identifiers. A deterministic score orders candidate review;
+it is not severity, ownership, testing status or permission. Signed URL query
+credentials and object paths are not exported. It does not parse every cloud
+service or authenticate any reference.
+
+```bash
+python3 -m recon cloud import <campaign> --file evidence/cloud-refs.txt
+python3 -m recon cloud generate <campaign> --file evidence/generation.json
+python3 -m recon cloud sync <campaign> --limit 200
+python3 -m recon cloud sync <campaign> --limit 200 --offset 200  # use prior next_offset
+python3 -m recon cloud plan <campaign> --limit 25
+python3 -m recon cloud show <campaign> --reference 1
+python3 -m recon cloud record <campaign> --file evidence/cloud-event.json
+python3 -m recon cloud verify <campaign>
+```
+
+`record` binds one event to an extracted reference, operation and principal label;
+checks campaign-local artifact hashes, marker/control separation, native stored
+request IDs when supplied, and offline grant/budget labels for live-labelled
+receipts. It **never sends**. `canary-proved` is a receipt-stage label, not
+independent semantic confirmation. Verification detects source/evidence/policy
+staleness but not AWS/Azure/GCP authorization. The proposed R1–R8 lanes,
+provider-namespace probing, cloud SDK, credential validation, impact executor,
+Prowler adapter and real-provider pilot in
+[`plans/cloud-misconfiguration.md`](../plans/cloud-misconfiguration.md) are **not
+implemented**. `cloud.grants` and `cloud.budget` are evidence-recording gates
+only; target execution still follows the existing written campaign rules and
+approved path. No cloud account, actual campaign or target was tested.
+
+`sync` returns `next_offset` for older stored-response pages; when history
+changes between pages, deduplication avoids duplicate sources, but a new
+snapshot/run is needed for an exact stable inventory. `generate` takes a
+campaign-local JSON object with `schema:1`,
+`pattern:"https://{word}.example.test/"` and `words:["old","dev"]`.
+It requires written program rules, a reviewed `cloud.grants` discovery label,
+positive declared budget, loud mode and an explicit wildcard in campaign scope.
+It writes **unprobed, ownership-unknown hostname proposals only**; it never
+resolves, queues or requests them. Shared provider domains (including S3
+and Azure Blob) are refused because a website wildcard does not prove control
+of a provider-wide resource namespace. Actual target requests still require
+the separate execution plan and approved path. The supplied words are not
+independently checked for target-derived provenance; R5's full discovery
+contract and provider-namespace grants are still open.
+
+### Subdomain takeover: offline candidate and claim dossiers
+
+`recon takeover import|sync|plan|show|record|cleanup|status|verify` imports normalized
+operator DNS captures (A/AAAA/CNAME/NS/MX/TXT/SOA), records parent referrals and
+wildcard controls, preserves hostname sightings and derives conditional trust
+references from stored responses. Import/sync never resolves an extracted hostname,
+queues target work or claims a provider resource. CT assets preserve certificate
+dates when supplied; imported/archive/JS assets retain their own provenance.
+
+```bash
+python3 -m recon takeover import acme evidence/dns-capture.json
+python3 -m recon takeover sync acme
+python3 -m recon takeover plan acme
+python3 -m recon takeover show acme --candidate 1
+python3 -m recon takeover record acme --file evidence/precheck.json
+python3 -m recon takeover cleanup acme --file evidence/cleanup.json
+python3 -m recon takeover verify acme
+```
+
+Host/zone candidates seed `subdomain-takeover` coverage and route to `hunt-takeover`.
+Provider suffixes, error signatures, NXDOMAIN and NS mismatches are leads, not
+claimability. Provider source/status/review date is supplied by the operator;
+there is no automatic current-provider catalogue. Cookie matching uses actual
+Domain attributes (with or without leading dot) instead of a last-two-label eTLD
+guess. No PSL/browser validation is implied. CSP inclusion does not create a script
+load, CORS headers are not a credentialed read, and observed redirect parameters
+are not an accepted OAuth allowlist. Trust scores are conditional priority, not
+severity. `inventory_complete` and `coverage_complete` remain false.
+
+Recorded claim stages need current precheck and claimability evidence; marker
+before/after/control artifacts; owned account/resource labels; and a cleanup owner,
+deadline and receipt. Live evidence channels also need `program_url`, nonempty
+`rules`, active mode and `takeover.rules_reviewed`, `grants` (`claim`, `chain`),
+`budget` (one declared request cap across channels) and dated `providers` records.
+These are offline recording gates, not traffic authorization or Burp budget
+enforcement. Source/body/artifact hashes are rechecked by `verify`; the validator
+still judges ownership, chronology, evidence meaning and impact. No findings are
+automatically created or promoted. The in-process provider rehearsal is a
+simulation, not real cloud, DNS, TLS or browser verification. See
+[`plans/subdomain-takeover.md`](../plans/subdomain-takeover.md) for acceptance and
+explicit follow-ons, and the skill references for JSON schemas and chain gates.
 
 ### Skill triggers and the request executor
 
 - **Trigger:** `recon/score.py` seeds coverage rows for auth paths (login, signin, signup, register, password, reset, forgot, otp, mfa, 2fa, totp, verif, session, token, oauth, authorize, sso, saml, change-email, recover). `recon/skillmap.py` maps those classes to skills and `coverage.md` prints them in a `skill` column: `ato` → `hunt-auth-bypass`, `hunt-ato`; `mfa-bypass` → `hunt-mfa-bypass`; `oauth` → `hunt-oauth`; `saml` → `hunt-saml`. The hunter brief tells the agent to load the row's skill before testing; `@<skill-id>` in a prompt forces one.
-- **Executor:** `python3 -m recon send <campaign> <url> [--method POST] [--json J | --form k=v | --data D | --data-file F] [--header 'Name: value'] [--no-follow]` sends one request through `ScopedClient`: scope per hop, `policy.allowed_methods`, mode, budgets, pinned egress, and the campaign `max_rps` enforced **across processes** through the `host_pacing` table (a shell loop of `send` cannot exceed it). It prints the `request_id` for `fact check`. Request header values are never stored; request and response bodies are stored as evidence. `Host`/proxy header overrides are refused.
-- **Imported skills:** the five auth `hunt-*` skills are adapted from mind-hunt (MIT, © 2026 MindflareX; notice and source SHA-256 in each folder's `LICENSE.txt` and frontmatter). Full-keyspace OTP brute force, IP rotation through proxies, breach-corpus password spraying, real-user identities and references to skills outside the folder were removed; tests (`tests/test_recon_skills.py`) fail if any return. Cited H1 reference cases are checked against `vault/_data/reports-merged.csv`. OTP races use an operator-run Repeater parallel group, not unsynchronized Intruder concurrency; callbacks use Collaborator (MCP generation/polling tools available). A native burst executor and raw Burp evidence importer are not built. The shared workflow and fallback plan are in `.claude/skills/scope-policy/references/burp-workflow.md`; without permission, tools or adequate proof, park the lead. `hunt-ssrf`, `hunt-idor`, `hunt-xss`, `hunt-sqli` and `hunt-csrf` are original workflows, not imported auth skills.
+- **Executor:** `python3 -m recon send <campaign> <url> [--method POST] [--json J | --form k=v | --data D | --data-file F] [--header 'Name: value'] [--no-follow]` sends one request through `ScopedClient`: scope per hop, `policy.allowed_methods`, mode, budgets and pinned egress. `host_pacing` shares serial host slots, but its read/write reservation is **not atomic under simultaneous processes**; never rely on it as a concurrent gate or disable it to test a race. It prints the `request_id` for `fact check`. Request header values are never stored; request and response bodies are stored as evidence. `Host`/proxy header overrides are refused.
+- **Imported skills:** the five auth `hunt-*` skills are adapted from mind-hunt (MIT, © 2026 MindflareX; notice and source SHA-256 in each folder's `LICENSE.txt` and frontmatter). Full-keyspace OTP brute force, IP rotation through proxies, breach-corpus password spraying, real-user identities and references to skills outside the folder were removed; tests (`tests/test_recon_skills.py`) fail if any return. Cited H1 reference cases are checked against `vault/_data/reports-merged.csv`. OTP races require an operator-run Burp capability, not unsynchronized Intruder concurrency; callbacks use Collaborator (MCP generation/polling tools available). A native burst executor is not built; **offline `import-burp` already imports XML/JSON/raw requests** and does not synchronize a group. The shared workflow and fallback plan are in `.claude/skills/scope-policy/references/burp-workflow.md`; without permission, tools or adequate proof, park the lead. The new BL/race skills are independently written from referenced concepts, not copied MindHunt text.
 - **Input census and injection hunting:** `recon inputs <campaign> --asset-id N` merges every observed input name with its locations, methods, accounts, sensitive-name flags, ID-likeness, coverage status and **stored-probe receipts** (which field names appear in stored request URLs/bodies), and states the header/cookie capture gap explicitly. `hunt-xss` maps per-field render contexts (HTML body, attribute, JS string, template, URL), classifies the filter/WAF rule with a one-probe-at-a-time ladder before any variant is designed, and covers reflected/stored/DOM/blind variants with marker-execution proofs; `hunt-sqli` proves injection with differential triples (probe, condition flip, negative control) across error/boolean/time/out-of-band/UNION/second-order variants, maps the detector first, and gates stacked/write probes behind program allowance. Neither dispatches payload wordlists or sqlmap; extraction proofs are minimal (banner or one test record).
 - **CSRF action ledger:** `recon/score.py` seeds `csrf` rows for POST/PUT/PATCH/DELETE, for GET or method-unknown routes with a state-change verb (`/items/7/delete`, camelCase included) or action selector (`?action=`), and for `ws`/`wss` endpoints; `csrf` → `hunt-csrf`. See *CSRF: action × context × case ledger* below.
 - **IDOR trigger:** `recon/score.py` seeds `idor-bola` rows from `id_params` captured by HAR imports (authenticated traffic with account labels) and GraphQL paths; `recon/report.py` `idor_candidates` builds the A/B comparison groups (same param name, different values per account) that `hunt-idor` tests with its staged ladder: direct marker swap → request-shape variants → vertical/cross-tenant → write proofs on disposable objects → chain targets via `finding link`. Live tests use the dedicated browser through Burp; adjacent-ID sampling stays on A/V-owned objects.
+- **Upload trigger:** `file-upload` rows (upload/import/avatar/attachment/files/media/image paths with a write or unknown method) map to `hunt-file-upload`. `recon upload sync` also derives signed-storage, resumable, raw-body, batch and URL-import transports from captures and specs; a row is a candidate sink, not an accepted or processed file.
+- **Authorization trigger:** `access-control` rows from API-like no-ID routes and internal/admin/export paths, plus `mass-assignment` candidates for observed POST/PUT/PATCH/**DELETE**, map to `hunt-access-control`. A DELETE row is not proof of assignable fields. Object-ID swaps remain `hunt-idor` even if both classes seed on internal/GraphQL routes. `recon authz` is an offline case/context ledger; `recon fields diff` is a value-free declared-versus-sent comparison, not a server-acceptance finding.
+- **JS disclosure/coverage triggers (partial):** `recon js sync` reads stored JS/map responses. It seeds `js-bundle` on a service with parsed scripts and `info-disclosure` on served maps or secret-looking values whose non-secret marker verifies in a stored response; both map to `hunt-js-bundle`. Public-by-design keys seed no disclosure row. These are investigation rows, not findings. Open stages keep `js status.complete=false` and block coarse JS closure.
+
+### JS build/asset ledger (partial, offline)
+
+`recon js sync|status|builds|plan|show|diff|record|pair|verify|export|resume` indexes stored JS/map and HTML bodies (including explicitly opted-in HAR bodies) with identified build snapshots, bounded import-map/service-worker/chunk edges, traffic-only and incomplete-asset gaps, partial J01–J17 static candidates, `js_only`/`zombie` differences and value-free test packets. `verify` exits 2 on missing/tampered bodies or changed response snapshots. `record` stores per-rung outcomes and destination handoffs; a paired J17 response only establishes asset delivery. `export` writes sanitized private-program metadata, not a request script. None of these commands sends target traffic, validates a credential, tests endpoint authorization or confirms a finding. Stage graders are conservative/incomplete: **do not interpret a completed bounded stage as full build coverage**. Full extraction/dataflow, independent stage grading and a full Gate A/B/C evaluation in `plan_js_bundle_hunt.md` remain outstanding.
+
+```bash
+python3 -m recon js sync acme
+python3 -m recon js status acme
+python3 -m recon js builds acme
+python3 -m recon js diff acme --origin https://app.example.test
+python3 -m recon js plan acme --lane stale --packets
+python3 -m recon js show acme js:<lead-key>
+python3 -m recon js record acme js:<lead-key> --rung removed-op --outcome blocked --reason 'No captured owned object'
+python3 -m recon js pair acme --low-response 41 --owner-response 42
+python3 -m recon js export acme --kind packets --out <private-campaign>/js-packets.json
+python3 -m recon js verify acme
+```
+
+The active collector reconstructs recognized webpack 4/5 and Vite chunk references and Next.js page routes, bounded service-worker precache references and import-map entries, checks each candidate against scope and caps, and records federation/out-of-scope/unknown-runtime gaps. Query-bearing script references are **not** silently stripped and fetched. It does **not** claim every build is complete. Guessed `.map` requests remain loud-only. Burp script/map responses are stored with truthful truncation metadata and never auto-refetch on import. `import-har --script-bodies` is opt-in: response bodies only, honest length/cap checks, no authenticated-asset refetch. Optional Wayback content requires `js.archived_content=true` and a reviewed date; passive requests stay on the existing intel-only client. `js.probe.enabled=true` fails config validation because `jsprobe` does not exist; M6 probes and M7 importers remain deferred.
+
+`js.stale.max_old_assets` defaults to **0**. A positive cap requires `program_url`, `js.rules_reviewed` (date of the published rules), active mode and the ordinary scoped/rate/budgeted `recon run` path; `js sync` only queues *previously captured* old asset URLs. The handler rechecks the current cap and blocks a host after 429/5xx. After reviewing rules and remaining budget, `js resume ... --origin ... --reason ...` records review and requeues eligible skipped jobs **offline**; another explicit approved `recon run` is required to send. This is not an automatic role-paired request, native endpoint probe or permission to bulk extract. No real target or third party was contacted by the JS tests.
+
+### Access control and mass assignment: offline case workflow
+
+`recon authz sync|plan|record|status|verify` reconciles exact in-scope operations,
+captured/declared context and nine case families (eight access-control, one mass
+assignment). Captured roles/tenants/workflows and GraphQL selectors remain separate;
+unlabelled captures are not pooled. Exact path variants and value-free query-name
+shapes (`?filter=`) stay separate. A named GraphQL `query` over POST is read-only;
+unknown operations and batch POST remain conservatively write-gated. The worklist ranks sensitive path/write
+candidates heuristically, not by proven severity. It shows open variants, blocked
+grants, stale evidence and coarse coverage conflicts. `fields diff --module <name>`
+compares method-matched **sent** field names with spec **declared** names within
+strictly comparable contexts; a sent field is not accepted.
+
+```bash
+python3 -m recon authz sync acme
+python3 -m recon authz plan acme --target 12
+python3 -m recon fields diff acme --module users
+python3 -m recon authz record acme --context 31 --case ac-role --state blocked \
+  --note 'No supplied high-role test account'
+python3 -m recon authz status acme
+python3 -m recon authz verify acme
+```
+
+`authz.probe_grants`/`chain_grants` in `scope.json` are fail-closed **ledger**
+gates, not permission to send traffic. A positive/negative operator event needs
+distinct campaign-local baseline/test/control files and a test-owned marker;
+writes need a before/after readback and explicit `write-proof`. Obvious unredacted
+secret signatures are rejected, but this is **not** a general DLP or causal proof
+checker. Evidence is copied by SHA-256; `verify` detects tampering and changed
+policy/context. External request counts are declared and manually reconciled —
+not enforced across Burp or scanners. Neither the ledger nor a 200 automatically
+confirms a finding; a negative closes only its tested variant. Owned-loopback
+HAR fixtures cover role/tenant, OData-like/GraphQL fields, method override,
+form/batch transport, version/export, synthetic chain and applied-versus-ignored
+mass assignment. No live target was contacted. See the skill's [case paths](../.claude/skills/hunt-access-control/references/cases.md)
+and [evidence rules](../.claude/skills/hunt-access-control/references/evidence.md).
+
+### File upload: offline lifecycle ledger
+
+`recon upload sync|declare|plan|fixture|record|callback|cleanup|resume|status|verify`
+keeps one exact sink (URL × method × field × transport) per captured request shape and
+one context per account/role/tenant/workflow; unlabelled captures are not pooled.
+`declare` adds in-scope operations the multipart seed misses (presigned storage,
+finalize, URL import); out-of-scope storage/CDN hosts are listed, never contacted.
+`plan` shows 24 lifecycle cases per context, from baseline intake, retrieval policy
+and cleanup through one-dimension contrasts, transports, processing and
+receiver evidence. Archive escape, process arguments, inclusion, XML parsing and
+quota are review or owned-lab only.
+
+```bash
+python3 -m recon upload sync acme
+python3 -m recon upload plan acme --sink 3
+python3 -m recon upload fixture acme --kind png      # tiny inert marker file + control
+python3 -m recon upload record acme --context 9 --case derivative-metadata \
+  --state accepted-inert --channel burp --grant derivative --marker bvup_<marker> \
+  --fact accepted=yes --fact processed=yes --artifact response=evidence/up.txt \
+  --artifact derivative=evidence/thumb.png --requests 3 --objects 1 --object-ref <id>
+python3 -m recon upload cleanup acme --event 14 --outcome deleted --artifact evidence/delete.txt
+python3 -m recon upload status acme
+```
+
+Stage facts are checked against artifact roles: `accepted` needs the response,
+`stored`/`served`/`reachable` an owned retrieval carrying the marker, `processed` a
+worker log or distinct derivative carrying it. `effect` needs effect, replay and a
+control with its own marker; `executed` also needs an attributable consumer log and
+the `execution` route. Undeclared facts stay `unknown`, and each attempt keeps its own
+facts. A layer is named only from an owner or owned-lab log containing the request
+reference; client-visible 403/413/challenge pages stay `layer-unconfirmed`. Callbacks
+need the `callback` grant, an approved receiver, a distinct control token and an
+ordered window, and never prove execution.
+
+Live channels (`browser`, `burp`, `native`, `scanner`) need `program_url`,
+`upload.rules_reviewed`, the sink method in `policy.allowed_methods`, the case's
+`upload.case_grants` family and a positive `upload.budget`, which is one shared cap
+for all of them. Browser/Burp/scanner counts are operator declarations, not measured
+traffic; `native` must cite every stored request ID. A 429, 5xx or any recorded stop
+trigger blocks further traffic on that host until `upload resume`; failed cleanup must
+be resolved with a receipt first. `impact-demonstrated` is eligible for validator
+review, never a promoted finding. The ledger generates no execution payloads or
+filter-evasion variants and sends nothing. The owned-loopback lab
+(`tests/test_recon_upload_lab.py`) covers lifecycle, format policy, a tiny size
+boundary, async visibility, resumable whole-object limits, derivatives, static
+serving, receiver attribution, edge/origin/worker separation and cleanup. See the
+skill's [cases](../.claude/skills/hunt-file-upload/references/cases.md) and
+[evidence rules](../.claude/skills/hunt-file-upload/references/evidence.md).
 
 ### SSRF: staged hunting workflow and offline evidence
 
@@ -76,6 +278,99 @@ The 2023 HackTricks fork is CC BY-NC 4.0; prose/payload tables were not copied. 
 second MIT knowledge base mixes XSS concepts, placeholders and inconsistent bounty
 claims; those were not imported as verified findings. Cloud prerequisites were checked
 against current AWS/GCP/Azure vendor documentation.
+
+### SSTI: offline evaluation and depth evidence (limited implementation)
+
+`ssti` coverage rows now name [`hunt-ssti`](../.claude/skills/hunt-ssti/SKILL.md).
+Candidate seeding distinguishes template-named fields, render/delivery/upload
+paths and other parameterized inputs. `recon ssti` creates one stable probe set
+per asset/method/location/field/account/role/tenant/workflow key (from matching
+observations) and separate submission/view/email/export/async/DOM
+surfaces. It emits only bounded arithmetic expressions and literal controls; it
+does not submit them. Operator-supplied raw responses or campaign-local text
+artifacts are traced with marker brackets and a stored request receipt. A submission
+response must cite its own request; later responses require an earlier matching
+submission, while an artifact's chronology and ownership still require operator
+review. Labelled Burp submission captures cannot be borrowed across account/role/
+tenant/workflow labels; unlabelled captures still need operator review. HTML-entity
+decoding is not raw-byte evidence. Two
+different arithmetic results and a literal control on the **same** server-side
+surface are required for confirmation. DOM-only output is not SSTI; missing or
+incomplete captures are not negatives. `verify` rehashes and reclassifies evidence.
+The coverage report names missing captured contexts, open surfaces and conflicting
+coarse claims; the coarser field ledger still has a field/account key.
+
+```bash
+python3 -m recon fields sync acme --asset-id 12
+python3 -m recon ssti probes acme --asset-id 12 --field template --method POST --location json --account test-a --role editor --tenant test-tenant --workflow draft
+python3 -m recon ssti surface acme --set 1 --kind export --label 'owned report'
+python3 -m recon ssti trace acme --surface 1 --probe braces-a --response 42
+python3 -m recon ssti status acme --set 1
+python3 -m recon ssti record acme --surface 1 --case severity-gate --state observed --severity medium --note 'Evaluation only; no read or execution proof'
+python3 -m recon ssti verify acme
+```
+
+### SSTI depth rungs: offline, grant-gated evidence
+
+After a surface is confirmed, `ssti.depth_grants` in `scope.json` can unlock
+offline evidence recording for three §11c rungs. Grants are copied from the
+program's written rules and fail closed; `plan --set N` prints the gate, the
+attempt markers and the listed data paths. `record` never reads a file, uses a
+token, resolves a callback host or sends a request. The operator performs any
+live action separately in the dedicated browser through Burp, then supplies
+campaign-local artifacts.
+
+```json
+"ssti": {
+  "depth_grants": ["file-read", "execution"],
+  "callback_hosts": ["*.callbacks.example.test"]
+}
+```
+
+```bash
+# cred-read: file-read grant, listed path, redacted excerpt + control
+python3 -m recon ssti record acme --surface 1 --case cred-read --state observed \
+  --grant file-read --target .env --attempts 1 \
+  --artifact evidence/env-redacted.txt --artifact evidence/env-control.txt \
+  --note 'Redacted .env excerpt; control run without the probe'
+
+# token-use: execution grant, prior cred-read, one read-only in-scope exercise
+python3 -m recon ssti record acme --surface 1 --case token-use --state observed \
+  --grant execution --exercise GET --attempts 1 \
+  --target 'https://app.acme.test/api/me?marker=<plan marker>' \
+  --artifact evidence/token-response-redacted.txt \
+  --note 'Single read-only GET; response class recorded; token value not stored'
+
+# lateral: execution grant, prior token-use, approved receiver, one OOB attempt
+python3 -m recon ssti record acme --surface 1 --case lateral --state observed \
+  --grant execution --target '<plan marker>.callbacks.example.test' --attempts 1 \
+  --artifact evidence/oob-event.txt --note 'One-shot OOB from a non-render host'
+```
+
+`cred-read` needs the `file-read` grant, a listed path (`.env`,
+`/proc/self/environ`, `/metadata/`, or the k8s service-account token path), a
+confirmed evaluation on the surface, two distinct artifacts, a redaction marker
+and no obvious secret signature. It raises the severity ceiling to high.
+`token-use` needs the `execution` grant, a prior observed `cred-read` on the same
+set, exactly one read-only `GET`/`HEAD`/`OPTIONS` exercise on an in-scope plain
+URL carrying the set's marker (no credential-named query parameters), and a
+redacted artifact. `lateral` needs a prior
+observed `token-use`, an approved callback host different from the render origin
+and carrying the marker, one attempt, and an OOB artifact containing the marker.
+Both execution rungs raise the ceiling to critical. Artifacts are copied by
+SHA-256 into `.recon/ssti-evidence/`; `verify` re-hashes them and
+`status` withdraws the ceiling if any evidence changed.
+
+This is a **partial** implementation of `plans/injection-program.md` §10–§11: it
+does not identify a unique engine/version, parse compressed PDF/MIME or OOB-event
+schemas, automate blind channels, generate filter bypasses, escape a sandbox, send
+a request, use a token or move laterally by itself, route models or independently
+prove execution; depth evidence is operator-supplied. The severity gate is not a
+finding-severity integration. A syntax match
+is not an impact claim. No target traffic, browser, scanner or finding promotion
+occurs in this module. `tests/test_recon_ssti_lab.py` exercises two arithmetic-only
+loopback renderers, literal reflection, delayed notification and CSV export, not
+real engines, PDF/MIME handling or a browser.
 
 ### CSRF: action × context × case ledger
 
@@ -373,6 +668,84 @@ python3 -m venv .venv
 .venv/bin/python -m recon run acme
 ```
 
+## Business-invariant and race ledgers (offline; partial laboratory coverage)
+
+`recon/invariants.py` is one additive schema-1 workflow/operation/resource/invariant
+model. `recon/logic.py` adds a BL-00 anomaly-first T0/T1 hunt log and BL-01–18
+case events; `recon/race.py` adds RC-01–21 scenarios, source-labelled signals,
+bounded per-scenario run measurements and human-operated M5a attestation imports.
+These modules make **no target requests, subprocess/model calls or findings**.
+`logic` and `race` share policy/configuration snapshots, copied redacted evidence,
+typed predicates, source-qualified receipts, unknown-effect/cleanup obligations and
+ledger-only stop/resume. `verify` checks historical artifact hashes and exits 2 for
+invalid integrity; stale policy/context rows remain in history without current
+readiness. Coarse `cov tested/confirmed` does not close exact workflow cases.
+
+```
+python3 -m recon logic sync <campaign>
+python3 -m recon logic declare <campaign> --file <schema-1-workflow.json>
+python3 -m recon logic probe <campaign> --workflow <workflow-key> --limit 25
+python3 -m recon logic observe <campaign> --file <redacted-differential.json>
+python3 -m recon logic plan <campaign>
+python3 -m recon logic record <campaign> --file <redacted-event.json>
+python3 -m recon logic cleanup <campaign> --event <id> --outcome deleted --artifact <receipt>
+python3 -m recon logic status <campaign>
+python3 -m recon logic verify <campaign>
+python3 -m recon race sync <campaign>
+python3 -m recon race declare <campaign> --file <schema-1-scenario.json>
+python3 -m recon race profile <campaign> --host <host>
+python3 -m recon race plan <campaign>
+python3 -m recon race attest <campaign> --file <operator-declaration.json>
+python3 -m recon race record <campaign> --file <redacted-run.json>
+python3 -m recon race status <campaign>
+python3 -m recon race verify <campaign>
+```
+
+Declaration and event files are bounded to 1 MiB; at most 20 operations, 50
+invariants, 32 redacted artifacts (5 MB each, 25 MiB combined). Lab contexts in
+declarations require loopback operations. With no capture, `sync` does **not**
+create a target context. To mark a live attempt ready, configure `program_url`,
+the reviewed published rules, `policy.mode`/`allowed_methods`,
+`business_logic.policy_reviewed`/`families`/`owned_accounts`/positive `budget`
+and, for races, `race.policy_reviewed`/`families`/positive `burst`. These are
+**ledger readiness/accounting labels**, not new permissions or enforcement of
+the browser/Burp traffic. Every intended URL/action still needs the standing
+campaign plan and written authorization. No live campaign was exercised for
+this implementation.
+
+M5a accepts only a human-operated, approved Burp/Turbo gate on one scoped host
+with 2–8 exact, owned nonfinancial disposable writers, one counted send per
+writer and no retries. The imported member response IDs retain
+`imported-burp-capture`; the attempted-send label remains `external-declared`.
+An absent member response stays charged and unresolved. The agent **cannot**
+fire a group, reserve its network budget, ensure its proxy/egress, or claim that
+operator attestation proves server overlap. Ordinary `send`, Burp MCP and a
+browser are not synchronized group transports. M5b/M6 (reservation broker,
+transport proof and safety tests) and a later live go/no-go remain outstanding.
+
+Gate A has additional offline regression cases for legacy reopen, exact shape,
+malformed inputs, typed predicates, source-qualified/error receipts, contextual
+staleness and T4 causality. The [gate matrix](../docs/business-race-gate-matrix.md)
+distinguishes checked assertions from still-partial rows; a passing test does
+not certify every A01–A25 clause. The B01 loopback lab now checks disjoint keys
+and same-intent replay as distinct controls. Owned-loopback B13/B15 covers
+2/4 selected exact writers with authoritative effects, native-vs-lab accounting
+and stale-point withdrawal; a B18 loopback replay combines an independently
+recorded synthetic credit with a lineage-gated, lab-only T4 handoff. B02–B18
+also have bounded **in-process** finite-step commerce fixtures, with public
+offline ledger imports for selected cases; these are not HTTP delivery or live
+transport tests. B13's chosen four-writer serial schedule is *not* a measured
+window threshold. Gate C has sixteen static adversarial prompts with expected
+dispositions and skill boundary checks; no model A/B judgment run was performed.
+`scripts/build_dossiers.py` now maps three exact race weakness labels. Existing
+index counts **re-derived from their `weakness` field**: base 10,094 rows = 856
+`business-logic`, 23 `race-conditions`; merged 15,443 rows = 1,203
+`business-logic`, 44 `race-conditions`. With installed `pyarrow`, the builder
+was run in a disposable private temporary directory: 89 selected dossiers,
+matching the 89 names in the working tree. Existing modified/untracked `vault/`
+outputs were not overwritten or reconciled, so this is a selection/count smoke
+test, not a clean in-place dossier regeneration or corpus prioritization change.
+
 ## Verification and attribution
 
 ```bash
@@ -381,8 +754,10 @@ python3 -m unittest discover -s tests -v
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-All **363 tests pass** in `.venv`; system Python runs 363 with the two optional Playwright
-tests (runtime harvest, CSRF two-origin lab) skipped. Tests use offline fixtures and owned
+Current system-Python run (2026-11-16): **511 collected, 509 passed, 2 skipped**;
+the optional Playwright runtime-harvest and CSRF two-origin tests were skipped.
+An earlier **422-test `.venv` checkpoint** predates the additional workflows; the
+expanded suite was not rerun in `.venv` for this checkpoint. Tests use offline fixtures and owned
 loopback servers, not bounty targets or model APIs. The 40 SSRF tests include exact-context/stale ledgers, grants,
 artifact boundaries, false-positive controls and a bounded vulnerable-vs-fixed fetcher.
 They do not test arbitrary cloud/protocol chains or certify live browser capture.

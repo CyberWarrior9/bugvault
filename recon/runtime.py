@@ -184,10 +184,24 @@ def job_runtime(ctx, svc: Dict[str, Any]) -> None:
             return route.abort()
         try:
             resp = ctx.client.get(req.url, purpose="runtime-" + req.resource_type,
-                                  method=req.method, follow=False,
-                                  headers={"Accept-Encoding": "identity"})
+                                   method=req.method, follow=False,
+                                   headers={"Accept-Encoding": "identity"})
         except (PolicyViolation, FetchError):
             return route.abort()
+        if req.resource_type == "script" and resp.status == 200 and ctx.scope.is_in(req.url):
+            # This script was already fetched through the scoped client. Analyze the
+            # stored bytes; do not enqueue a second, possibly unauthenticated fetch.
+            from .active import _process_js_text
+            url = req.url.split("#", 1)[0].split("?", 1)[0]
+            aid, _ = ctx.store.upsert_asset(
+                "js", url, host=urlsplit(url).hostname, in_scope=True,
+                attrs={"sources": ["runtime"], "page_origin": origin,
+                       "bytes": len(resp.body), "truncated": resp.truncated,
+                       "basis": "synthetic-ui-static"})
+            if resp.truncated:
+                ctx.store.add_fact(aid, "runtime-loaded JS capture truncated",
+                                   "observed", kind="collection-gap", source="runtime")
+            _process_js_text(ctx, resp.text(), url, origin, "runtime-js", aid, 0, resp.headers)
         loc = resp.headers.get("location")
         if 300 <= resp.status < 400 and loc:
             nxt = urljoin(req.url, loc)

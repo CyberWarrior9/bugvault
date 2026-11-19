@@ -22,9 +22,10 @@ INTERNAL = re.compile(r"admin|internal|debug|staff|employee|backoffice|manage|co
 AUTH_PATH = re.compile(r"login|signin|sign-in|signup|register|password|passwd|reset|forgot|"
                        r"otp|mfa|2fa|totp|verif|session|token|oauth|authorize|sso|saml|"
                        r"change-?email|email/change|recover", re.I)
-MONEY = re.compile(r"pay|checkout|order|cart|coupon|promo|voucher|redeem|gift|transfer|"
-                   r"withdraw|balance|wallet|credit|refund|invite|vote|claim|reward|"
-                   r"subscri|billing|plan|quota|limit", re.I)
+MONEY = re.compile(r"(?<![a-z0-9])(?:pay|checkout|orders?|carts?|coupons?|promos?|vouchers?|"
+                   r"redeem|gifts?|transfer|withdraw|balances?|wallets?|credits?|refunds?|"
+                   r"invites?|votes?|claim|rewards?|subscriptions?|billing|plans?|quotas?|limits?|"
+                   r"entitlements?|approvals?|trials?)(?![a-z0-9])", re.I)
 RENDER = re.compile(r"export|report|pdf|render|preview|screenshot|thumbnail|convert|print",
                     re.I)
 UPLOAD = re.compile(r"upload|import|avatar|attachment|/files?(?:/|$)|media|image", re.I)
@@ -184,11 +185,15 @@ def applicable_classes(e: Dict[str, Any]) -> Dict[str, str]:
             out["html-injection"] = f"content-ish fields (stored/rendered input): {content[:6]}"
         tpl = template_parameters(a.get("params", []))
         if tpl:
-            out["ssti"] = f"template-ish fields on a render path: {tpl[:6]}"
+            out["ssti"] = f"tier 1: template-ish fields (candidate, not evaluation proof): {tpl[:6]}"
+        elif RENDER.search(path) or re.search(r"email|notify|invoice|mail|theme", path, re.I):
+            out["ssti"] = "tier 2: input on a render/delivery surface (candidate only)"
+        else:
+            out["ssti"] = "tier 3: parameterized input; low-prior template evaluation check"
     if writes:
         out["csrf"] = f"state-changing methods {sorted(writes)}"
-        if writes & {"POST", "PUT", "PATCH"}:
-            out["mass-assignment"] = "write endpoint: add privileged fields"
+        out["mass-assignment"] = ("write endpoint candidate (including DELETE; "
+                                  "assignable fields and server acceptance unproven)")
     elif urlsplit(e["value"]).scheme in ("ws", "wss"):
         out["csrf"] = "realtime handshake: a cookie-authenticated connection can carry actions"
     elif not methods - {"GET", "HEAD"}:
@@ -207,14 +212,22 @@ def applicable_classes(e: Dict[str, Any]) -> Dict[str, str]:
             out["oauth"] = "OAuth/OIDC flow"
         if "saml" in path:
             out["saml"] = "SAML flow"
-    if MONEY.search(path):
-        out["business-logic"] = "value/limit/state transitions"
-        if writes or not methods:
-            out["race-conditions"] = "check-then-act on money/limits"
+    selectors = [str(v) for k in ("graphql_ops", "selectors", "actions") for v in a.get(k, [])
+                 if isinstance(v, str)]
+    selectors += [str(a.get("selector", ""))]
+    semantic = bool(MONEY.search(split_camel(path)) or any(MONEY.search(split_camel(v)) for v in selectors))
+    mutation = any(re.search(r"\bmutation\b", v, re.I) for v in selectors)
+    action = bool(MUTATING.search(split_camel(path)) or any(MUTATING.search(split_camel(v)) for v in selectors))
+    limited = bool(params & {"limit", "quantity", "amount", "coupon", "promo", "idempotency_key"})
+    if semantic or mutation or action and limited:
+        out["business-logic"] = "candidate action/limit signal; owner rule and effect unverified"
+        if writes or mutation or methods == {"GET"} and action or not methods:
+            out["race-conditions"] = "candidate write/limited action; shared resource and overlap unverified"
     if RENDER.search(path):
         out["ssrf"] = out.get("ssrf", "server-side render/export (headless browser SSRF)")
     if UPLOAD.search(path) and (writes or not methods):
         out["file-upload"] = "upload/import surface"
+        out.setdefault("ssti", "tier 2: upload/import may be rendered later (candidate only)")
     if "graphql" in path or "gql" in path:
         out["graphql"] = "GraphQL: node()/field authz, batching"
         out.setdefault("idor-bola", "GraphQL object access")

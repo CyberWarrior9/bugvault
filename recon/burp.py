@@ -36,19 +36,22 @@ MAX_PART_NAMES = 200
 
 
 class Item:
-    __slots__ = ("url", "method", "status", "request_bytes", "response_bytes")
+    __slots__ = ("url", "method", "status", "request_bytes", "response_bytes",
+                 "request_truncated", "response_truncated")
 
-    def __init__(self, url, method, status, request_bytes, response_bytes):
+    def __init__(self, url, method, status, request_bytes, response_bytes,
+                 request_truncated=False, response_truncated=False):
         self.url, self.method, self.status = url, method, status
         self.request_bytes, self.response_bytes = request_bytes, response_bytes
+        self.request_truncated, self.response_truncated = request_truncated, response_truncated
 
 
-def _decode(node) -> bytes:
+def _decode(node) -> Tuple[bytes, bool]:
     raw = node.text or ""
     flag = (node.get("base64") or "").lower() == "true" or re.fullmatch(
         r"[A-Za-z0-9+/=\s]{200,}", raw[:400] or "")
     data = base64.b64decode(re.sub(r"\s+", "", raw)) if flag else raw.encode("utf-8", "replace")
-    return data[:MAX_ITEM_BYTES]
+    return data[:MAX_ITEM_BYTES], len(data) > MAX_ITEM_BYTES
 
 
 def _xml_items(content: bytes) -> List[Item]:
@@ -67,12 +70,12 @@ def _xml_items(content: bytes) -> List[Item]:
                 status = int(child["status"].text)
             except (ValueError, TypeError):
                 status = None
-        request = _decode(child["request"]) if child.get("request") is not None else b""
-        response = _decode(child["response"]) if child.get("response") is not None else b""
+        request, req_cut = _decode(child["request"]) if child.get("request") is not None else (b"", False)
+        response, resp_cut = _decode(child["response"]) if child.get("response") is not None else (b"", False)
         if not url and request:
             url = _url_from_request_line(request)
         if url:
-            items.append(Item(url, method, status, request, response))
+            items.append(Item(url, method, status, request, response, req_cut, resp_cut))
     return items
 
 
@@ -90,25 +93,28 @@ def _json_items(content: bytes) -> List[Item]:
         method = str(entry.get("method") or "GET").upper()
         status = entry.get("status")
         status = int(status) if isinstance(status, int) else None
-        request = _flagged_bytes(entry.get("request"))
-        response = _flagged_bytes(entry.get("response"))
+        request, req_cut = _flagged_bytes(entry.get("request"))
+        response, resp_cut = _flagged_bytes(entry.get("response"))
         if not url and request:
             url = _url_from_request_line(request)
         if url:
-            items.append(Item(url, method, status, request, response))
+            items.append(Item(url, method, status, request, response, req_cut, resp_cut))
     return items
 
 
-def _flagged_bytes(node) -> bytes:
+def _flagged_bytes(node) -> Tuple[bytes, bool]:
     if node is None:
-        return b""
+        return b"", False
     if isinstance(node, dict):
         text = str(node.get("text") or "")
-        if (node.get("base64") or "").lower() == "true":
-            return base64.b64decode(re.sub(r"\s+", "", text))[:MAX_ITEM_BYTES]
-        return text.encode("utf-8", "replace")[:MAX_ITEM_BYTES]
+        if str(node.get("base64") or "").lower() == "true":
+            data = base64.b64decode(re.sub(r"\s+", "", text))
+        else:
+            data = text.encode("utf-8", "replace")
+        return data[:MAX_ITEM_BYTES], len(data) > MAX_ITEM_BYTES
     if isinstance(node, str):
-        return node.encode("utf-8", "replace")[:MAX_ITEM_BYTES]
+        data = node.encode("utf-8", "replace")
+        return data[:MAX_ITEM_BYTES], len(data) > MAX_ITEM_BYTES
     raise ValueError("unsupported request/response encoding in Burp JSON")
 
 
@@ -228,7 +234,8 @@ def read_items(path: Path, scheme: str = "http") -> Tuple[List[Item], str]:
         items = _json_items(content)
         return items[:MAX_RECORDS], "burp-json"
     method, url, headers, _ = parse_raw_request(content, scheme)
-    return [Item(url, method, None, content, b"")], "raw-request"
+    return [Item(url, method, None, content[:MAX_ITEM_BYTES], b"",
+                 len(content) > MAX_ITEM_BYTES)], "raw-request"
 
 
 def import_burp(ctx, path: Path, account: Optional[str], role: str = "", tenant: str = "",
@@ -241,7 +248,8 @@ def import_burp(ctx, path: Path, account: Optional[str], role: str = "", tenant:
                "workflow_state": workflow_state, "basis": "captured-real-traffic"}
     import_id = ctx.store.register_import("burp", content, context)
     stats = {"items": len(items), "format": kind, "endpoints": 0, "out_of_scope": 0,
-             "static": 0, "duplicate_samples": 0, "malformed": 0, "responses_stored": 0}
+              "static": 0, "duplicate_samples": 0, "malformed": 0, "responses_stored": 0,
+              "incomplete_responses": 0, "script_assets": 0}
     for index, item in enumerate(items):
         try:
             url = item.url
@@ -258,34 +266,50 @@ def import_burp(ctx, path: Path, account: Optional[str], role: str = "", tenant:
                 ctx.store.provenance(aid, import_id, index, "captured-real-traffic")
                 continue
             path_ = urlsplit(url).path
+            fields: Dict[str, Any] = {}
+            ct = ""
             if is_static(path_):
                 stats["static"] += 1
-                continue
-            fields = item_fields(item)
-            names = fields["query"] + fields["body"] + fields["header"] + fields["cookie"]
-            mime = (item.request_bytes.partition(b"\r\n\r\n")[0].decode("iso-8859-1", "replace"))
-            ct = ""
-            for line in mime.splitlines()[1:]:
-                n, _, v = line.partition(":")
-                if n.strip().lower() == "content-type":
-                    ct = v.strip().split(";")[0].lower()
-            eid = ctx.add_endpoint(url, "burp", method=method, params=names, extra={
-                "auth_seen": fields["auth"], "id_params": sorted(fields["ids"]),
-                "accounts": [account] if account else [],
-                "content_types": [ct] if ct else [],
-                "basis": "captured-real-traffic"})
-            if eid is None:
-                stats["static"] += 1
-                continue
-            stats["endpoints"] += 1
-            ctx.store.provenance(eid, import_id, index, "captured-real-traffic")
-            if not ctx.store.add_observation(
-                    eid, method, account, fields, item.status, "burp",
-                    capture_key=f"burp:{import_id}:{index}",
-                    context={**context, "import_id": import_id, "record_index": index,
-                             "path": path_, "csrf_meta": item_meta(item, fields)}):
-                stats["duplicate_samples"] += 1
-                continue
+                # Authenticated bundles/maps are important offline evidence, but an
+                # import must never enqueue an unauthenticated refetch of their URL.
+                if path_ext(path_) in ("js", "mjs", "cjs", "map") and item.response_bytes:
+                    kind_ = "sourcemap" if path_ext(path_) == "map" else "js"
+                    clean_url = url.split("#", 1)[0].split("?", 1)[0]
+                    script_id, _ = ctx.store.upsert_asset(
+                        kind_, clean_url, host=urlsplit(url).hostname,
+                        in_scope=True, attrs={"sources": ["burp"],
+                                              "page_origin": origin_of(url),
+                                              "imported_only": True})
+                    ctx.store.provenance(script_id, import_id, index, "imported-burp-capture")
+                    stats["script_assets"] += 1
+                else:
+                    continue
+            else:
+                fields = item_fields(item)
+                names = fields["query"] + fields["body"] + fields["header"] + fields["cookie"]
+                mime = (item.request_bytes.partition(b"\r\n\r\n")[0].decode("iso-8859-1", "replace"))
+                ct = ""
+                for line in mime.splitlines()[1:]:
+                    n, _, v = line.partition(":")
+                    if n.strip().lower() == "content-type":
+                        ct = v.strip().split(";")[0].lower()
+                eid = ctx.add_endpoint(url, "burp", method=method, params=names, extra={
+                    "auth_seen": fields["auth"], "id_params": sorted(fields["ids"]),
+                    "accounts": [account] if account else [],
+                    "content_types": [ct] if ct else [],
+                    "basis": "captured-real-traffic"})
+                if eid is None:
+                    stats["static"] += 1
+                    continue
+                stats["endpoints"] += 1
+                ctx.store.provenance(eid, import_id, index, "captured-real-traffic")
+                if not ctx.store.add_observation(
+                        eid, method, account, fields, item.status, "burp",
+                        capture_key=f"burp:{import_id}:{index}",
+                        context={**context, "import_id": import_id, "record_index": index,
+                                 "path": path_, "csrf_meta": item_meta(item, fields)}):
+                    stats["duplicate_samples"] += 1
+                    continue
             if item.response_bytes or item.request_bytes:
                 resp_head = item.response_bytes.partition(b"\r\n\r\n")[0].decode(
                     "iso-8859-1", "replace")
@@ -299,12 +323,24 @@ def import_burp(ctx, path: Path, account: Optional[str], role: str = "", tenant:
                     if b"\r\n\r\n" in item.response_bytes else b""
                 req_body = item.request_bytes.partition(b"\r\n\r\n")[2] \
                     if b"\r\n\r\n" in item.request_bytes else b""
+                declared_len = next((int(v) for n, v in _head_pairs(item.response_bytes)
+                                     if n.lower() == "content-length" and v.isdecimal()), None)
+                complete = (not item.response_truncated and bool(item.response_bytes)
+                            and b"\r\n\r\n" in item.response_bytes
+                            and (declared_len is None or declared_len == len(resp_body)))
+                if not complete:
+                    stats["incomplete_responses"] += 1
                 ctx.store.record_request(
                     method, url, item.status, "burp-import",
-                    [n for n in (fields["header"] + fields["cookie"])], resp_headers,
-                    body=resp_body, body_complete=True, basis="imported-burp-capture",
-                    context={"import_id": import_id, "record_index": index},
-                    req_body=req_body, req_content_type=ct or None)
+                    [] if is_static(path_) else [n for n in (fields["header"] + fields["cookie"])],
+                    resp_headers, body=resp_body, body_complete=complete,
+                    basis="imported-burp-capture",
+                    context={**context, "import_id": import_id, "record_index": index,
+                             "account": account or "",
+                             "capture_gap": ("import-cap" if item.response_truncated else
+                                             "incomplete-response" if not complete else ""),
+                             "request_truncated": item.request_truncated},
+                    req_body=req_body, req_content_type=ct if not is_static(path_) else None)
                 stats["responses_stored"] += 1
         except (ValueError, TypeError, AttributeError):
             stats["malformed"] += 1

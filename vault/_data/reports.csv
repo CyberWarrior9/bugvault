@@ -80,7 +80,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 1337351,BYPASSING COMMENTING ON RESTRICTED  AUDIENCE VIDEOS,https://hackerone.com/reports/1337351,resolved,Improper Access Control - Generic,idor-bola,tiktok,True,65,2021-11-18T01:47:07.414Z,0
 1614332,CVE-2022-32208: FTP-KRB bad message verification,https://hackerone.com/reports/1614332,resolved,Business Logic Errors,business-logic,ibb,True,7,2022-06-27T20:09:48.941Z,270
 83667,apps.owncloud.com: Session Cookie in URL can be captured by hackers,https://hackerone.com/reports/83667,resolved,Improper Authentication - Generic,auth-bypass,owncloud,False,2,2015-10-31T11:38:18.102Z,1070
-2039870,CVE-2023-32001: fopen race condition,https://hackerone.com/reports/2039870,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,curl,False,26,2023-07-25T05:00:08.873Z,5070
+2039870,CVE-2023-32001: fopen race condition,https://hackerone.com/reports/2039870,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,curl,False,26,2023-07-25T05:00:08.873Z,5070
 214576,SIGABRT - mirb - Double Free,https://hackerone.com/reports/214576,resolved,Double Free,unclassified,shopify-scripts,True,5,2017-05-13T21:31:12.187Z,12517
 906790, Account Takeover on unverified emails in File Sync & Share ,https://hackerone.com/reports/906790,resolved,Violation of Secure Design Principles,business-logic,acronis,True,17,2021-06-16T18:26:18.227Z,4032
 772039,Same site Scripting ,https://hackerone.com/reports/772039,resolved,,unclassified,drive_net_inc,False,46,2020-01-13T12:56:22.183Z,414
@@ -107,7 +107,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 101063,Drivers can change profile picture,https://hackerone.com/reports/101063,resolved,Improper Authentication - Generic,auth-bypass,uber,True,3,2016-05-12T07:11:49.140Z,572
 507494,xss on https://www.rockstargames.com/GTAOnline/jp/screens/ ,https://hackerone.com/reports/507494,resolved,Cross-site Scripting (XSS) - Generic,xss,rockstargames,True,154,2020-06-12T15:13:35.011Z,0
 1353200,text injection and content spoofing,https://hackerone.com/reports/1353200,resolved,Phishing,unclassified,oneweb,False,10,2022-02-03T11:12:41.164Z,925
-340191,Session works after logout from Shopify account,https://hackerone.com/reports/340191,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,shopify,True,67,2020-03-30T15:53:57.014Z,0
+340191,Session works after logout from Shopify account,https://hackerone.com/reports/340191,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,shopify,True,67,2020-03-30T15:53:57.014Z,0
 231687,Remote Code Execution (RCE) vulnerability in multiple DoD websites,https://hackerone.com/reports/231687,resolved,Code Injection,rce,deptofdefense,False,4,2017-07-05T16:34:27.816Z,0
 659760,Blind XSS in operator's interface for 33slona.ru,https://hackerone.com/reports/659760,resolved,Cross-site Scripting (XSS) - Stored,xss,mailru,True,83,2020-03-31T09:53:51.042Z,0
 263866,Error Page Content Spoofing or Text Injection,https://hackerone.com/reports/263866,duplicate,,unclassified,gsa_bbp,False,0,2017-11-17T17:40:20.119Z,513
@@ -1070,7 +1070,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 1358977,When sharing a Deck card in conversation the metaData can be manipulated to open arbitrary URL,https://hackerone.com/reports/1358977,resolved,Business Logic Errors,business-logic,nextcloud,True,15,2022-02-15T07:09:15.016Z,0
 591786,XSS on services.shopify.com,https://hackerone.com/reports/591786,resolved,Cross-site Scripting (XSS) - Stored,xss,shopify,True,43,2019-06-14T18:39:04.294Z,533
 756149,Blind SSRF on debug.nordvpn.com due to misconfigured sentry instance,https://hackerone.com/reports/756149,resolved,Server-Side Request Forgery (SSRF),ssrf,nordsecurity,True,65,2020-02-24T10:59:56.642Z,12594
-996141,Race condition while removing the love react in community files.,https://hackerone.com/reports/996141,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,figma,True,38,2020-10-10T19:54:11.838Z,0
+996141,Race condition while removing the love react in community files.,https://hackerone.com/reports/996141,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,figma,True,38,2020-10-10T19:54:11.838Z,0
 345162,Local File Download,https://hackerone.com/reports/345162,resolved,Improper Access Control - Generic,idor-bola,ratelimited,False,19,2019-01-01T15:09:04.608Z,2349
 799898,Admin Login Credential Leak for DoD Gitlab EE instance,https://hackerone.com/reports/799898,resolved,Information Disclosure,info-disclosure,deptofdefense,False,2,2020-05-14T17:44:38.871Z,2215
 1886143,information disclosure of another company bug on video.,https://hackerone.com/reports/1886143,resolved,Information Disclosure,info-disclosure,security,True,40,2023-03-12T13:54:16.494Z,793
@@ -1687,7 +1687,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 992618,Improper Access Control - Generic on https://████,https://hackerone.com/reports/992618,resolved,Improper Access Control - Generic,idor-bola,deptofdefense,False,10,2021-04-02T18:45:51.034Z,384
 55842,[persistent cross-site scripting] customers can target admins,https://hackerone.com/reports/55842,resolved,Cross-site Scripting (XSS) - Generic,xss,shopify,True,3,2015-07-01T15:35:20.996Z,1088
 300176,[https://reviews.zomato.com] Time Based SQL Injection,https://hackerone.com/reports/300176,resolved,SQL Injection,sqli,zomato,True,67,2018-02-02T07:21:31.720Z,0
-1418419,[api.krisp.ai] Race condition on /v2/seats endpoint allows bypassing the original seat limit,https://hackerone.com/reports/1418419,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,krisp,True,23,2022-04-04T13:43:24.595Z,0
+1418419,[api.krisp.ai] Race condition on /v2/seats endpoint allows bypassing the original seat limit,https://hackerone.com/reports/1418419,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,krisp,True,23,2022-04-04T13:43:24.595Z,0
 168054,Unauthenticated Stored xss ,https://hackerone.com/reports/168054,not-applicable,Cross-site Scripting (XSS) - Generic,xss,nextcloud,False,14,2016-09-13T19:39:50.224Z,724
 159820,Issues with uploading list images,https://hackerone.com/reports/159820,resolved,Uncontrolled Resource Consumption,dos,instacart,True,11,2016-09-26T20:14:17.710Z,1216
 766437,Thailand - Insecure Direct Object Reference permits an unauthorized user to transfer funds from a victim using only the victims Starbucks card,https://hackerone.com/reports/766437,resolved,Insecure Direct Object Reference (IDOR),idor-bola,starbucks,False,28,2020-02-11T21:58:52.485Z,0
@@ -2105,12 +2105,12 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 161323,Content Injection - demo.nextcloud.com,https://hackerone.com/reports/161323,resolved,Violation of Secure Design Principles,business-logic,nextcloud,False,1,2016-08-26T19:46:36.895Z,183
 1296366,EC2 subdomain takeover at http://████████/,https://hackerone.com/reports/1296366,resolved,Privilege Escalation,privilege-escalation,deptofdefense,False,32,2022-02-14T21:24:17.776Z,966
 2231261,Elasticsearch is currently open without authentication on  https://██████l,https://hackerone.com/reports/2231261,resolved,Information Disclosure,info-disclosure,deptofdefense,False,8,2023-12-21T17:30:51.917Z,4136
-488985,Race condition in claiming program credentials ,https://hackerone.com/reports/488985,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,security,True,46,2019-05-19T18:23:48.173Z,2483
+488985,Race condition in claiming program credentials ,https://hackerone.com/reports/488985,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,security,True,46,2019-05-19T18:23:48.173Z,2483
 470553,"Unauthorized command execution in Web protection component of Anti-Virus products family [FF, Chrome]",https://hackerone.com/reports/470553,resolved,Command Injection - Generic,rce,kaspersky,True,7,2019-11-24T08:58:50.265Z,2933
 504162,Делаем плейлист от любого(почти) пользователя/группы/артиста.,https://hackerone.com/reports/504162,resolved,,unclassified,vkcom,True,3,2021-11-05T15:52:49.320Z,0
 1338256,No server side check on terms of service page which leads to bypass,https://hackerone.com/reports/1338256,duplicate,Client-Side Enforcement of Server-Side Security,unclassified,acronis,False,6,2021-10-05T09:19:47.972Z,1348
 357485,Hacktivity of a private program visible to banned user if he gets invited to a program by hackbot,https://hackerone.com/reports/357485,resolved,Improper Access Control - Generic,idor-bola,security,True,41,2018-06-27T05:38:36.959Z,8774
-801743,Race condition leads to Inflation of coins when bought via Google Play Store at endpoint https://oauth.reddit.com/api/v2/gold/android/verify_purchase ,https://hackerone.com/reports/801743,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,reddit,True,28,2021-10-27T14:08:20.920Z,2140
+801743,Race condition leads to Inflation of coins when bought via Google Play Store at endpoint https://oauth.reddit.com/api/v2/gold/android/verify_purchase ,https://hackerone.com/reports/801743,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,reddit,True,28,2021-10-27T14:08:20.920Z,2140
 7332,CSRF - Creating accounts,https://hackerone.com/reports/7332,resolved,Cross-Site Request Forgery (CSRF),csrf,irccloud,False,1,2014-05-14T17:16:31.802Z,1302
 423797,Passive stored XSS at broadcast room,https://hackerone.com/reports/423797,resolved,Cross-site Scripting (XSS) - Stored,xss,chaturbate,True,73,2018-11-06T08:11:21.087Z,0
 159686,integer overflow in the _csv module's join_append_data function,https://hackerone.com/reports/159686,resolved,,unclassified,ibb,True,0,2019-11-12T09:02:09.040Z,167
@@ -2205,7 +2205,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 231460,Open prod Jenkins instance,https://hackerone.com/reports/231460,resolved,Information Disclosure,info-disclosure,snapchat,True,425,2017-08-19T00:01:09.582Z,0
 269047,Clickjacking https://blockstack.org/,https://hackerone.com/reports/269047,informative,,unclassified,hiro,False,0,2017-10-05T13:39:43.756Z,0
 1265709,Lack of bruteforce protection for TOTP 2FA,https://hackerone.com/reports/1265709,resolved,Improper Restriction of Authentication Attempts,unclassified,nextcloud,True,17,2023-03-26T16:05:28.309Z,0
-604534,Race Condition leads to undeletable group member,https://hackerone.com/reports/604534,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,security,True,130,2020-03-20T17:17:47.781Z,1950
+604534,Race Condition leads to undeletable group member,https://hackerone.com/reports/604534,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,security,True,130,2020-03-20T17:17:47.781Z,1950
 1842674,SQL Injection + Insecure Deserialization leads to Remote Code Execution on https://krisp.ai,https://hackerone.com/reports/1842674,resolved,Deserialization of Untrusted Data,unclassified,krisp,True,112,2023-02-22T09:58:09.925Z,0
 486693,2FA Session not expires after the password reset,https://hackerone.com/reports/486693,resolved,Session Fixation,auth-bypass,nextcloud,True,32,2021-01-18T09:40:24.627Z,0
 315205,Debug information disclosure on oauth-redirector.services.greenhouse.io,https://hackerone.com/reports/315205,resolved,Information Exposure Through Debug Information,unclassified,greenhouse,True,28,2020-02-29T07:55:34.158Z,1781
@@ -3088,7 +3088,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 419731,[www.zomato.com] Blind XSS in one of the Admin Dashboard,https://hackerone.com/reports/419731,resolved,Cross-site Scripting (XSS) - Stored,xss,zomato,True,60,2018-12-03T07:02:09.537Z,0
 142078,IE search XSS,https://hackerone.com/reports/142078,resolved,Cross-site Scripting (XSS) - Generic,xss,gm,False,2,2017-06-09T18:30:26.478Z,0
 835087,ajaxgetachievementsforgame is not guarded for unreleased apps,https://hackerone.com/reports/835087,resolved,Information Disclosure,info-disclosure,valve,True,13,2020-07-30T20:38:52.220Z,0
-1990421, CVE-2023-28320 - siglongjmp race condition,https://hackerone.com/reports/1990421,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,ibb,True,6,2023-05-26T18:00:09.847Z,461
+1990421, CVE-2023-28320 - siglongjmp race condition,https://hackerone.com/reports/1990421,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,ibb,True,6,2023-05-26T18:00:09.847Z,461
 570568,[min-http-server] Stored XSS in the filename when directories listing,https://hackerone.com/reports/570568,resolved,,unclassified,nodejs-ecosystem,False,3,2019-07-24T05:49:38.304Z,2082
 280826,Stored self-XSS pubg.mail.ru в нескольких местах,https://hackerone.com/reports/280826,resolved,Cross-site Scripting (XSS) - Stored,xss,mailru,False,11,2017-10-31T10:56:47.104Z,0
 6370,Possible clickjacking at shop.khanacademy.org,https://hackerone.com/reports/6370,informative,UI Redressing (Clickjacking),unclassified,khanacademy,False,2,2014-05-08T03:33:17.909Z,1412
@@ -3415,11 +3415,11 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 429747,https://help.nextcloud.com::: Web cache poisoning attack,https://hackerone.com/reports/429747,resolved,,unclassified,nextcloud,False,22,2020-01-31T19:08:52.345Z,1154
 642643,Bypass _token in forms [Merchant.Kartpay.com ],https://hackerone.com/reports/642643,resolved,,unclassified,kartpay,False,25,2019-10-09T05:34:18.970Z,2653
 148890,Full path disclosure when CSRF validation failed ,https://hackerone.com/reports/148890,informative,Information Disclosure,info-disclosure,paragonie,False,2,2016-07-02T18:05:12.457Z,958
-2110030,Race Condition Enables Bypassing Verification Check,https://hackerone.com/reports/2110030,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,toolsforhumanity,True,74,2024-04-04T21:55:53.952Z,0
+2110030,Race Condition Enables Bypassing Verification Check,https://hackerone.com/reports/2110030,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,toolsforhumanity,True,74,2024-04-04T21:55:53.952Z,0
 1294242,Underrepresentation Bias through Twitter's Cropping Algorithm #2: Favoring Animals over Black People,https://hackerone.com/reports/1294242,resolved,Improper Input Validation,input-validation,twitter-algorithmic-bias,False,6,2021-09-08T22:50:37.680Z,4040
 496414,"Leaked artifactory_key, artifactory_api_key, and gcloud refresh_token via GitHub.",https://hackerone.com/reports/496414,resolved,,unclassified,zendesk,True,21,2019-04-23T14:50:07.319Z,0
 966494,True Image 2021 - LPE via XPC service communication,https://hackerone.com/reports/966494,resolved,Privilege Escalation,privilege-escalation,acronis,True,5,2021-02-23T07:19:48.576Z,4070
-300305,Ability to bypass partner email confirmation to take over any store given an employee email,https://hackerone.com/reports/300305,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,shopify,True,234,2018-02-07T13:28:31.959Z,2505
+300305,Ability to bypass partner email confirmation to take over any store given an employee email,https://hackerone.com/reports/300305,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,shopify,True,234,2018-02-07T13:28:31.959Z,2505
 258260,Accessing Private Files Shared in message of other users,https://hackerone.com/reports/258260,resolved,Improper Access Control - Generic,idor-bola,vanilla,True,23,2018-07-23T14:31:47.355Z,832
 47876,Full Path Disclosure,https://hackerone.com/reports/47876,resolved,Information Disclosure,info-disclosure,mailru,False,5,2016-09-29T12:47:09.425Z,220
 238906,Stored XSS in Templates>Enahance>Social Badges,https://hackerone.com/reports/238906,resolved,Cross-site Scripting (XSS) - Stored,xss,mixmax,False,7,2017-06-16T17:23:31.500Z,473
@@ -3710,7 +3710,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 243138,Improper parsing of input could lead to future XSS vulnerabilities in Sequences,https://hackerone.com/reports/243138,informative,Cross-site Scripting (XSS) - Stored,xss,mixmax,False,0,2017-06-27T19:04:20.126Z,1369
 73256,PHP yaml_parse/yaml_parse_file/yaml_parse_url Double Free,https://hackerone.com/reports/73256,resolved,,unclassified,ibb,True,1,2015-05-18T00:00:00.000Z,4453
 141244,XSS in zendesk.com/product/,https://hackerone.com/reports/141244,resolved,Cross-site Scripting (XSS) - Generic,xss,zendesk,True,21,2016-12-15T00:56:43.041Z,754
-1520931,Time-of-check to time-of-use vulnerability in the std::fs::remove_dir_all() function of the Rust standard library,https://hackerone.com/reports/1520931,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,ibb,True,9,2022-03-24T18:09:51.838Z,3036
+1520931,Time-of-check to time-of-use vulnerability in the std::fs::remove_dir_all() function of the Rust standard library,https://hackerone.com/reports/1520931,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,ibb,True,9,2022-03-24T18:09:51.838Z,3036
 1668028,XSS in Desktop Client in the notifications,https://hackerone.com/reports/1668028,resolved,Cross-site Scripting (XSS) - Generic,xss,nextcloud,True,49,2022-11-25T11:29:58.569Z,992
 74514,Own downloading link isn't properly checked in the email template,https://hackerone.com/reports/74514,informative,,unclassified,digitalsellz,False,3,2015-11-16T06:04:24.533Z,0
 1560717,Possible to make restricted files public on Phabricator via Diffusion,https://hackerone.com/reports/1560717,resolved,Improper Access Control - Generic,idor-bola,phabricator,True,14,2022-07-29T22:37:58.052Z,900
@@ -4310,7 +4310,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 1265390,Reflected XSS on https://www.glassdoor.com/job-listing/spotlight,https://hackerone.com/reports/1265390,resolved,Cross-site Scripting (XSS) - Reflected,xss,glassdoor,True,54,2021-08-19T15:14:26.186Z,2974
 269479,Report Private Links Leaks to Google Analytics via Query String Param,https://hackerone.com/reports/269479,resolved,Information Disclosure,info-disclosure,security,False,59,2017-10-25T23:45:14.669Z,3126
 914877,Improper Restriction of Excessive Authentication Attempts at https://mirror.w1.dwar.ru/login.php,https://hackerone.com/reports/914877,resolved,Improper Restriction of Authentication Attempts,unclassified,mailru,True,7,2021-05-06T12:30:29.154Z,0
-859962,Bypass apiserver proxy filter,https://hackerone.com/reports/859962,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,kubernetes,True,7,2021-05-27T19:11:03.856Z,1903
+859962,Bypass apiserver proxy filter,https://hackerone.com/reports/859962,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,kubernetes,True,7,2021-05-27T19:11:03.856Z,1903
 1115759,"Отправляем смс на любой номер от имени vk.com.  (Сообщение в смс всегда одно и то же, его менять нельзя.)",https://hackerone.com/reports/1115759,resolved,Business Logic Errors,business-logic,vkcom,True,10,2021-04-09T06:02:40.125Z,0
 364095,Просмотр приложений любого пользователя / группы,https://hackerone.com/reports/364095,resolved,Information Disclosure,info-disclosure,vkcom,True,17,2018-07-28T09:38:35.851Z,0
 1072832,[hta3] Remote Code Execution on ████,https://hackerone.com/reports/1072832,resolved,Code Injection,rce,deptofdefense,True,99,2023-05-15T15:10:54.365Z,16066
@@ -5072,7 +5072,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 1657033,stored cross site scripting in https://███,https://hackerone.com/reports/1657033,resolved,Cross-site Scripting (XSS) - Stored,xss,deptofdefense,False,5,2023-01-06T19:14:01.542Z,898
 117739,limit number of images in statement,https://hackerone.com/reports/117739,resolved,Violation of Secure Design Principles,business-logic,gratipay,True,2,2017-06-16T13:55:05.733Z,458
 319458,"typeorm does not properly escape parameters when building SQL queries, resulting in potential SQLi",https://hackerone.com/reports/319458,resolved,SQL Injection,sqli,nodejs-ecosystem,False,1,2019-04-03T20:27:32.311Z,2889
-429026,Race condition in performing retest allows duplicated payments,https://hackerone.com/reports/429026,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,security,True,211,2018-12-27T12:12:56.622Z,1339
+429026,Race condition in performing retest allows duplicated payments,https://hackerone.com/reports/429026,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,security,True,211,2018-12-27T12:12:56.622Z,1339
 73245,Type Confusion Vulnerability in SoapClient,https://hackerone.com/reports/73245,resolved,,unclassified,ibb,True,5,2015-04-16T00:00:00.000Z,4809
 389561,Command Injection Vulnerability in kill-port Package,https://hackerone.com/reports/389561,resolved,Command Injection - Generic,rce,nodejs-ecosystem,False,10,2019-01-06T00:18:52.269Z,1092
 1190705,CSRF in newsletter form,https://hackerone.com/reports/1190705,not-applicable,Cross-Site Request Forgery (CSRF),csrf,sifchain,False,1,2021-12-09T17:50:38.477Z,2850
@@ -5678,7 +5678,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 507012,bypass Claudflare access crm.mautic.com,https://hackerone.com/reports/507012,resolved,,unclassified,unikrn,True,7,2019-04-05T09:25:33.587Z,318
 113120,"An integer overflow bug in php_implode() could lead heap overflow, make PHP to crash",https://hackerone.com/reports/113120,resolved,Memory Corruption - Generic,memory-safety,ibb,True,1,2019-11-12T09:38:12.878Z,3323
 1004136,subdomain Takeover,https://hackerone.com/reports/1004136,resolved,Privilege Escalation,privilege-escalation,mailru,False,5,2021-02-21T13:34:42.930Z,0
-474021,"Race condition vulnerability on ""This Rocks"" button.",https://hackerone.com/reports/474021,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,rockstargames,True,19,2020-06-12T16:13:46.724Z,0
+474021,"Race condition vulnerability on ""This Rocks"" button.",https://hackerone.com/reports/474021,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,rockstargames,True,19,2020-06-12T16:13:46.724Z,0
 360539,SQL Injection Proof of Concept for Starbucks URL,https://hackerone.com/reports/360539,not-applicable,SQL Injection,sqli,starbucks,False,1,2019-01-09T18:49:06.831Z,2034
 2322,Yahoo open redirect using ad,https://hackerone.com/reports/2322,informative,Open Redirect,open-redirect,yahoo,False,2,2014-04-03T22:24:45.282Z,0
 222171,heap use after free in fiber_switch,https://hackerone.com/reports/222171,resolved,,unclassified,shopify-scripts,True,2,2017-05-07T04:04:12.770Z,0
@@ -5936,7 +5936,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 7950,User credentials are sent in clear text,https://hackerone.com/reports/7950,informative,Information Disclosure,info-disclosure,localize,False,2,2014-04-18T04:33:30.096Z,1766
 41758,Stored XSS in api key of operator wallet,https://hackerone.com/reports/41758,resolved,Cross-site Scripting (XSS) - Generic,xss,enter,True,4,2015-04-03T14:00:43.650Z,536
 356408,"The ""Download Raw Diff"" URL is viewable by everyone",https://hackerone.com/reports/356408,informative,Information Disclosure,info-disclosure,phabricator,False,1,2018-05-23T16:23:47.160Z,2026
-1717650,Promotion code can be used more than redemption limit.,https://hackerone.com/reports/1717650,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,stripe,True,47,2023-02-13T22:04:14.701Z,1236
+1717650,Promotion code can be used more than redemption limit.,https://hackerone.com/reports/1717650,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,stripe,True,47,2023-02-13T22:04:14.701Z,1236
 268679,Homo graphs attack ,https://hackerone.com/reports/268679,informative,Violation of Secure Design Principles,business-logic,gsa_bbp,False,6,2017-09-20T19:37:53.259Z,1382
 758854,Reflected Xss,https://hackerone.com/reports/758854,resolved,Cross-site Scripting (XSS) - Reflected,xss,deptofdefense,False,28,2020-09-21T14:52:09.328Z,362
 696198,WordPress Plugin Insert or Embed Articulate Content into WordPress Remote Code Execution (UNAUTHORIZED),https://hackerone.com/reports/696198,informative,Information Disclosure,info-disclosure,nextcloud,False,2,2019-11-11T15:23:26.672Z,687
@@ -7779,7 +7779,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 690010,OS Command Injection on Jison [all-parser-ports],https://hackerone.com/reports/690010,resolved,OS Command Injection,rce,nodejs-ecosystem,False,13,2020-05-28T10:39:50.786Z,3114
 576532,DOM XSS via Shopify.API.remoteRedirect,https://hackerone.com/reports/576532,resolved,Cross-site Scripting (XSS) - DOM,xss,shopify,True,15,2019-06-05T23:24:37.469Z,1229
 410882,Vanilla Forums domGetImages getimagesize Unserialize Remote Code Execution Vulnerability (critical),https://hackerone.com/reports/410882,resolved,Deserialization of Untrusted Data,unclassified,vanilla,True,32,2018-11-23T15:46:58.101Z,5860
-481654,No Rate On Add Suggest,https://hackerone.com/reports/481654,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,weblate,False,9,2019-01-22T13:59:29.029Z,917
+481654,No Rate On Add Suggest,https://hackerone.com/reports/481654,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,weblate,False,9,2019-01-22T13:59:29.029Z,917
 1119224,SSRF due to CVE-2021-26855 on ████████,https://hackerone.com/reports/1119224,resolved,Server-Side Request Forgery (SSRF),ssrf,deptofdefense,False,7,2021-03-24T20:53:21.655Z,1055
 1202408,No Rate Limit on redditgifts gift  when Adding Comment,https://hackerone.com/reports/1202408,resolved,Violation of Secure Design Principles,business-logic,reddit,True,17,2021-10-21T19:52:19.094Z,1309
 1317024,Open Akamai ARL XSS at ████████,https://hackerone.com/reports/1317024,resolved,Cross-site Scripting (XSS) - Generic,xss,deptofdefense,False,7,2022-04-20T20:18:30.639Z,1035
@@ -7914,7 +7914,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 325040,xmlrpc.php FILE IS enable it will used for bruteforce attack and denial of service,https://hackerone.com/reports/325040,resolved,Uncontrolled Resource Consumption,dos,localtapiola,True,23,2018-04-09T20:48:16.886Z,2705
 863544,[devcert] Command Injection via insecure command formatting,https://hackerone.com/reports/863544,resolved,Command Injection - Generic,rce,nodejs-ecosystem,False,11,2020-06-15T16:02:48.968Z,6525
 66994,Link vulnerability leads to phishing attacks,https://hackerone.com/reports/66994,informative,,unclassified,slack,False,1,2015-07-13T22:39:11.513Z,1904
-1132171,Race condition allows to send multiple times feedback for the hacker,https://hackerone.com/reports/1132171,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,security,False,13,2021-09-22T19:21:30.016Z,2159
+1132171,Race condition allows to send multiple times feedback for the hacker,https://hackerone.com/reports/1132171,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,security,False,13,2021-09-22T19:21:30.016Z,2159
 272231,Download of (later executed) .NET installer over insecure channel,https://hackerone.com/reports/272231,informative,Man-in-the-Middle,unclassified,brave,False,1,2018-07-09T21:37:45.155Z,1104
 947728,staff can able to extend shopify trial period without admin permission,https://hackerone.com/reports/947728,resolved,Improper Access Control - Generic,idor-bola,shopify,True,53,2020-09-15T02:15:16.291Z,2723
 1806275,Mail app stores cleartext password in database until OAUTH2 setup is done,https://hackerone.com/reports/1806275,resolved,Plaintext Storage of a Password,unclassified,nextcloud,False,12,2023-03-08T09:49:01.303Z,859
@@ -8141,7 +8141,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 1180252,Buffer overrun in Steam SILK voice decoder,https://hackerone.com/reports/1180252,resolved,Classic Buffer Overflow,memory-safety,valve,True,183,2021-09-13T17:56:19.395Z,6311
 209949,Arbitrary heap exposure in JSON.generate,https://hackerone.com/reports/209949,resolved,Memory Corruption - Generic,memory-safety,ruby,True,9,2017-09-25T12:32:43.247Z,1225
 222040,"Reflected XSS at https://da.wordpress.org/themes/?s= via ""s="" parameter ",https://hackerone.com/reports/222040,resolved,Cross-site Scripting (XSS) - Reflected,xss,wordpress,True,16,2017-07-26T18:16:55.372Z,770
-1566017,Race condition on https://judge.me/people,https://hackerone.com/reports/1566017,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,judgeme,True,18,2022-08-01T05:28:05.901Z,385
+1566017,Race condition on https://judge.me/people,https://hackerone.com/reports/1566017,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,judgeme,True,18,2022-08-01T05:28:05.901Z,385
 1397826,Unclaimed official s3 bucket of tendermint(tendermint-packages) which is used by many other blockchain companies in their code,https://hackerone.com/reports/1397826,resolved,Business Logic Errors,business-logic,cosmos,True,21,2023-02-15T19:58:26.972Z,1151
 129992,Missing Certificate Authority Authorization rule,https://hackerone.com/reports/129992,resolved,Cryptographic Issues - Generic,crypto,security,False,19,2017-08-17T02:55:24.775Z,741
 156615,Attacker can smuggle a malicious domain in a URI object.,https://hackerone.com/reports/156615,informative,Open Redirect,open-redirect,ruby,False,6,2022-12-13T20:39:21.428Z,1894
@@ -8447,7 +8447,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 514421,smtp service vulnerable to POODLE SSLv3,https://hackerone.com/reports/514421,resolved,Cryptographic Issues - Generic,crypto,mariadb,False,7,2019-05-11T07:47:30.560Z,0
 745276,Dragonblood: Design and Implementation Flaws in WPA3 and EAP-pwd,https://hackerone.com/reports/745276,resolved,Cryptographic Issues - Generic,crypto,ibb,True,6,2020-05-05T20:42:25.951Z,4221
 1122419,Information Disclosure of Garbage Collection Cycle 'Again',https://hackerone.com/reports/1122419,resolved,Information Disclosure,info-disclosure,mailru,False,7,2021-04-06T09:23:18.939Z,0
-927384,Race Condition when following a user,https://hackerone.com/reports/927384,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,stagingdoteverydotorg,False,95,2020-09-09T05:51:17.666Z,1523
+927384,Race Condition when following a user,https://hackerone.com/reports/927384,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,stagingdoteverydotorg,False,95,2020-09-09T05:51:17.666Z,1523
 1081148,CSRF + XSS leads to ATO,https://hackerone.com/reports/1081148,resolved,Cross-Site Request Forgery (CSRF),csrf,mailru,False,28,2021-06-22T09:11:28.449Z,0
 658013,Git flag injection - local file overwrite to remote code execution,https://hackerone.com/reports/658013,resolved,Command Injection - Generic,rce,gitlab,True,762,2019-12-19T00:29:02.683Z,3698
 852613,Remote Code Execution on Cloud via latest Kibana 7.6.2,https://hackerone.com/reports/852613,resolved,Privilege Escalation,privilege-escalation,elastic,True,19,2020-07-28T19:45:35.016Z,4339
@@ -8455,7 +8455,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 250741,[New Feature] Password history check,https://hackerone.com/reports/250741,resolved,,unclassified,legalrobot,True,8,2017-07-30T06:05:57.956Z,0
 337986,CVE-2018-6797:  A crafted regular expression can cause a heap buffer write overflow in Perl 5 giving a remote attacker control over bytes written,https://hackerone.com/reports/337986,resolved,Heap Overflow,memory-safety,ibb,True,23,2018-05-19T19:00:32.204Z,2899
 356322,Раскрытие серии/номера паспорта и снилс пользователя lootdog.io,https://hackerone.com/reports/356322,resolved,Information Disclosure,info-disclosure,mailru,True,12,2018-11-12T17:40:59.596Z,0
-700833,Race condition на покупке призов за баллы,https://hackerone.com/reports/700833,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,mailru,True,12,2020-02-18T12:02:37.827Z,1883
+700833,Race condition на покупке призов за баллы,https://hackerone.com/reports/700833,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,mailru,True,12,2020-02-18T12:02:37.827Z,1883
 1403614,Possibility to force an admin to install recommended applications,https://hackerone.com/reports/1403614,resolved,Cross-Site Request Forgery (CSRF),csrf,nextcloud,True,8,2022-04-29T11:50:18.775Z,878
 282572,No Confirmation or Notification During Email Change which can leads to account takeover,https://hackerone.com/reports/282572,duplicate,,unclassified,infogram,False,0,2017-10-27T11:37:03.434Z,672
 252699,Hyper Link Injection In email and Space Characters Allowed at Password Field.,https://hackerone.com/reports/252699,informative,,unclassified,phabricator,False,1,2017-07-23T20:53:42.433Z,1334
@@ -8958,7 +8958,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 331110,[buttle] HTML Injection in filename leads to XSS when directory listing is displayed in the browser,https://hackerone.com/reports/331110,resolved,Cross-site Scripting (XSS) - Stored,xss,nodejs-ecosystem,False,2,2018-07-04T19:24:02.294Z,2493
 392785,Domain Takeover in [obviousengine.com] a snapchat acquisitions,https://hackerone.com/reports/392785,resolved,Privilege Escalation,privilege-escalation,snapchat,False,30,2018-10-07T09:46:55.716Z,495
 351016,Malformed Skybox .TGA in Half-Life (GoldSRC) leads to Access Violation,https://hackerone.com/reports/351016,resolved,Classic Buffer Overflow,memory-safety,valve,True,30,2018-08-28T23:37:17.517Z,943
-484634,[pandao.ru] Возможность списания несуществующих бонусных баллов,https://hackerone.com/reports/484634,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,mailru,True,58,2019-03-05T09:00:58.600Z,0
+484634,[pandao.ru] Возможность списания несуществующих бонусных баллов,https://hackerone.com/reports/484634,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,mailru,True,58,2019-03-05T09:00:58.600Z,0
 1418413,RXSS ,https://hackerone.com/reports/1418413,resolved,Cross-site Scripting (XSS) - Reflected,xss,securityscorecard,False,9,2022-03-20T06:55:20.947Z,0
 107780,[cfire.mail.ru] Time Based SQL Injection,https://hackerone.com/reports/107780,resolved,SQL Injection,sqli,mailru,True,0,2016-01-15T10:06:47.633Z,2102
 854445,Unrestricted file upload leads to stored xss on https://████████/,https://hackerone.com/reports/854445,resolved,Cross-site Scripting (XSS) - Stored,xss,deptofdefense,False,4,2020-05-27T14:24:10.310Z,954
@@ -9021,7 +9021,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 323852,Firmware download/install vulnerable to CSRF,https://hackerone.com/reports/323852,resolved,Cross-Site Request Forgery (CSRF),csrf,ui,True,32,2020-05-29T16:52:42.348Z,0
 135945,EVP_EncryptUpdate overflow (CVE-2016-2106),https://hackerone.com/reports/135945,resolved,Memory Corruption - Generic,memory-safety,ibb,True,2,2016-05-03T18:18:51.331Z,82
 489284,Access to Employee calendar disclosing internal presentation and meetings,https://hackerone.com/reports/489284,resolved,Improper Access Control - Generic,idor-bola,shopify,True,102,2019-03-08T21:22:29.145Z,2100
-994051,Race condition on my.stripo.email at /cabinet/stripeapi/v1/projects/298427/emails/folders uri,https://hackerone.com/reports/994051,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),unclassified,stripo,False,5,2020-11-09T15:12:51.458Z,3497
+994051,Race condition on my.stripo.email at /cabinet/stripeapi/v1/projects/298427/emails/folders uri,https://hackerone.com/reports/994051,resolved,Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition'),race-conditions,stripo,False,5,2020-11-09T15:12:51.458Z,3497
 1298902,Outsider can affect Upvote Percentage of private subreddit post by calling /api/vote API,https://hackerone.com/reports/1298902,resolved,Improper Access Control - Generic,idor-bola,reddit,True,42,2021-10-27T14:05:25.410Z,1605
 2979,Content Spoofing,https://hackerone.com/reports/2979,informative,Violation of Secure Design Principles,business-logic,slack,False,3,2014-08-11T05:16:16.861Z,339
 1238684,Open URL Redirection,https://hackerone.com/reports/1238684,resolved,Open Redirect,open-redirect,unikrn,True,100,2021-06-28T10:03:31.304Z,416
@@ -9420,7 +9420,7 @@ id,title,url,substate,weakness,class,team,has_bounty,vote_count,disclosed_at,bod
 569891,[min-http-server] List any file in the folder by using path traversal.,https://hackerone.com/reports/569891,resolved,Path Traversal,file-read,nodejs-ecosystem,False,8,2020-08-26T02:20:09.724Z,1459
 98512,[maps.me] Reflected XSS,https://hackerone.com/reports/98512,resolved,Cross-site Scripting (XSS) - Reflected,xss,mailru,False,5,2018-04-26T15:44:26.301Z,0
 1959219,Banned user still able to invited to reports as a collabrator and reset the password,https://hackerone.com/reports/1959219,resolved,Improper Access Control - Generic,idor-bola,security,True,87,2023-07-06T07:37:04.971Z,1424
-2078571,[curl] CVE-2023-32001: fopen race condition,https://hackerone.com/reports/2078571,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,unclassified,ibb,True,19,2023-07-27T12:18:12.287Z,5446
+2078571,[curl] CVE-2023-32001: fopen race condition,https://hackerone.com/reports/2078571,resolved,Time-of-check Time-of-use (TOCTOU) Race Condition,race-conditions,ibb,True,19,2023-07-27T12:18:12.287Z,5446
 1410357,getUsersOfRoom discloses users in private channels,https://hackerone.com/reports/1410357,resolved,,unclassified,rocket_chat,False,2,2022-09-22T16:04:20.186Z,0
 275269,Gem signature forgery,https://hackerone.com/reports/275269,resolved,Cryptographic Issues - Generic,crypto,rubygems,True,16,2018-08-03T20:23:47.955Z,8357
 677557,"mod_http2, memory corruption on early pushes (CVE-2019-10081)",https://hackerone.com/reports/677557,resolved,Use After Free,memory-safety,ibb,True,3,2019-10-15T18:00:26.476Z,9112

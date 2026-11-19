@@ -17,6 +17,7 @@ Usage:
 import argparse
 import csv
 import json
+import os
 import re
 from collections import Counter, defaultdict
 
@@ -35,6 +36,9 @@ W2C = {
     'Code Injection': 'rce', 'Command Injection - Generic': 'rce', 'Remote Code Execution': 'rce',
     'OS Command Injection': 'rce', 'Cross-Site Request Forgery (CSRF)': 'csrf',
     'Business Logic Errors': 'business-logic', 'Violation of Secure Design Principles': 'business-logic',
+    "Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition')": 'race-conditions',
+    'Time-of-check Time-of-use (TOCTOU) Race Condition': 'race-conditions',
+    'Leveraging Race Conditions': 'race-conditions',
     'Information Disclosure': 'info-disclosure', 'Open Redirect': 'open-redirect',
     'Path Traversal': 'file-read', 'File and Directory Information Exposure': 'info-disclosure',
     'External Control of File Name or Path': 'file-read', 'XML External Entities (XXE)': 'xxe',

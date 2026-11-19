@@ -13,6 +13,10 @@ Keep HTTP and HTTPS, and nondefault ports, distinct. Associate resolved IPs with
 
 ## Hunting subdomain takeover deeper
 
+Load `hunt-takeover` for DNS/referral/wildcard evidence, stale-host discovery,
+conditional trust ranking and operator claim/cleanup dossiers. Its ledger is
+offline and never claims a resource or sends DNS queries.
+
 Takeover detection has two code paths: a dangling CNAME with no A record (named by
 provider via `takeover_providers_for_cname`), and a live body matching an unclaimed-
 service signature. `dig` in PATH is required — without it, unresolved hosts record a

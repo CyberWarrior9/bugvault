@@ -4,7 +4,7 @@ tags: [moc, report-study]
 
 # Report Studies — MOC
 
-85 top-voted, bounty-paid HackerOne reports (stratified across vulnerability classes).
+89 top-voted, bounty-paid HackerOne reports (stratified across vulnerability classes).
 Source: HackerOne official disclosed-reports dataset (train split).
 Each dossier: `rs-<h1_id>.md` — attack narrative, why it paid, technique links, full text.
 
@@ -67,8 +67,10 @@ Each dossier: `rs-<h1_id>.md` — attack narrative, why it paid, technique links
 | [[rs-2281075]] | [[privilege-escalation]] | Privilege Escalation | teleport | 258 | 1525 | privilege-escalation, priv-esc |
 | [[rs-396954]] | [[unclassified]] | Deserialization of Untrusted Data | rootstocklabs | 256 | 13788 | unclassified |
 | [[rs-248668]] | [[xxe]] | XML External Entities (XXE) | x | 251 | 3758 | xxe, priv-esc, file-read |
+| [[rs-300305]] | [[race-conditions]] | Time-of-check Time-of-use (TOCTOU) Race Condition | shopify | 234 | 2505 | race-conditions |
 | [[rs-683298]] | [[open-redirect]] | Open Redirect | x | 233 | 907 | open-redirect, xss-exec |
 | [[rs-1181946]] | [[dos]] | Uncontrolled Resource Consumption | security | 212 | 1412 | dos |
+| [[rs-429026]] | [[race-conditions]] | Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition') | security | 211 | 1339 | race-conditions |
 | [[rs-583987]] | [[csrf]] | Cross-Site Request Forgery (CSRF) | x | 208 | 2152 | csrf, csrf-action |
 | [[rs-273946]] | [[sqli]] | SQL Injection | grab | 181 | 6180 | sqli, sqli-proof |
 | [[rs-1132378]] | [[file-read]] | Path Traversal | gitlab | 181 | 2849 | file-read, ssrf-chain, info-leak |
@@ -81,6 +83,7 @@ Each dossier: `rs-<h1_id>.md` — attack narrative, why it paid, technique links
 | [[rs-1727221]] | [[csrf]] | Cross-Site Request Forgery (CSRF) | security | 148 | 6406 | csrf, csrf-action |
 | [[rs-170552]] | [[csrf]] | Cross-Site Request Forgery (CSRF) | security | 137 | 1840 | csrf, ato, csrf-action |
 | [[rs-1946534]] | [[open-redirect]] | Open Redirect | brave | 133 | 4259 | open-redirect, pii-exposure, info-leak |
+| [[rs-604534]] | [[race-conditions]] | Time-of-check Time-of-use (TOCTOU) Race Condition | security | 130 | 1950 | race-conditions, csrf-action |
 | [[rs-312543]] | [[xxe]] | XML External Entities (XXE) | semrush | 101 | 4686 | xxe, file-read |
 | [[rs-712979]] | [[header-injection]] | CRLF Injection | x | 92 | 2696 | header-injection |
 | [[rs-423073]] | [[input-validation]] | Improper Input Validation | security | 78 | 1005 | input-validation |
@@ -92,6 +95,7 @@ Each dossier: `rs-<h1_id>.md` — attack narrative, why it paid, technique links
 | [[rs-2147132]] | [[header-injection]] | CRLF Injection | mozilla | 54 | 1798 | header-injection |
 | [[rs-1547877]] | [[file-upload]] | Unrestricted Upload of File with Dangerous Type | aiven_ltd | 50 | 914 | file-upload, rce-confirmed |
 | [[rs-1048457]] | [[crypto]] | Improper Certificate Validation | curl | 49 | 1774 | crypto |
+| [[rs-1717650]] | [[race-conditions]] | Time-of-check Time-of-use (TOCTOU) Race Condition | stripe | 47 | 1236 | race-conditions |
 | [[rs-2435482]] | [[crypto]] | Improper Certificate Validation | ibb | 46 | 209 | crypto |
 | [[rs-903424]] | [[crypto]] | Cryptographic Issues - Generic | nextcloud | 42 | 3625 | crypto |
 | [[rs-1095645]] | [[xxe]] | XML External Entities (XXE) | wordpress | 40 | 3062 | xxe, file-read, rce-confirmed |

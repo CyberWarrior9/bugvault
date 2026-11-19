@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import hashlib
+import base64
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlsplit
@@ -87,7 +88,7 @@ def request_params(req: Dict[str, Any]) -> Tuple[List[Tuple[str, Any]], List[Tup
 
 
 def import_har(ctx, path: Path, account: Optional[str], role: str = "", tenant: str = "",
-               workflow_state: str = "") -> Dict[str, int]:
+               workflow_state: str = "", script_bodies: bool = False) -> Dict[str, int]:
     content = read_artifact(path)
     data = json.loads(content.decode("utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("log"), dict):
@@ -96,9 +97,11 @@ def import_har(ctx, path: Path, account: Optional[str], role: str = "", tenant: 
     if not isinstance(entries, list) or len(entries) > MAX_RECORDS:
         raise ValueError(f"HAR entries must be a list of at most {MAX_RECORDS} records")
     context = {"account": account or "", "role": role, "tenant": tenant,
-               "workflow_state": workflow_state, "basis": "captured-real-traffic"}
+               "workflow_state": workflow_state, "basis": "captured-real-traffic",
+               "script_bodies": bool(script_bodies)}
     import_id = ctx.store.register_import("har", content, context)
-    stats = {"entries": len(entries), "endpoints": 0, "js": 0, "out_of_scope": 0,
+    stats = {"entries": len(entries), "endpoints": 0, "js": 0, "script_bodies": 0,
+             "incomplete_script_bodies": 0, "out_of_scope": 0,
               "static": 0, "duplicate_samples": 0, "malformed": 0}
     for index, e in enumerate(entries):
         if not _valid_entry(e):
@@ -117,11 +120,37 @@ def import_har(ctx, path: Path, account: Optional[str], role: str = "", tenant: 
         resp = e.get("response") or {}
         rmime = ((resp.get("content") or {}).get("mimeType") or "").lower()
         path_ = urlsplit(url).path
-        if "javascript" in rmime or path_ext(path_) in ("js", "mjs"):
-            aid = ctx.add("js", origin_of(url) + path_, source="har",
-                          attrs={"page_origin": origin_of(url), "depth": 0})
+        if ("javascript" in rmime or path_ext(path_) in ("js", "mjs", "cjs", "map")):
+            kind = "sourcemap" if path_ext(path_) == "map" else "js"
+            # An authenticated HAR must not enqueue an unauthenticated refetch.
+            aid, _ = ctx.store.upsert_asset(kind, origin_of(url) + path_, host=urlsplit(url).hostname,
+                                            in_scope=True, attrs={"sources": ["har"],
+                                                                  "page_origin": origin_of(url),
+                                                                  "imported_only": True})
             ctx.store.provenance(aid, import_id, index, "captured-real-traffic")
             stats["js"] += 1
+            content = resp.get("content") or {}
+            if script_bodies and isinstance(content.get("text"), str):
+                raw = content["text"]
+                try:
+                    body = (base64.b64decode(raw, validate=True) if content.get("encoding") == "base64"
+                            else raw.encode("utf-8"))
+                except (ValueError, UnicodeError):
+                    stats["malformed"] += 1
+                    continue
+                cap = min(ctx.campaign.raw.get("js", {}).get(
+                    "max_map_bytes" if kind == "sourcemap" else "max_bundle_bytes",
+                    ctx.policy.max_body_bytes), ctx.policy.max_body_bytes)
+                expected = content.get("size")
+                complete = (len(body) <= cap and type(expected) is int and expected == len(body))
+                if not complete:
+                    stats["incomplete_script_bodies"] += 1
+                ctx.store.record_request(method, url, resp.get("status"), "har-script-import", [], {},
+                                         body=body[:cap], body_complete=complete,
+                                         basis="captured-har-body", context={
+                                             **context, "import_id": import_id, "record_index": index,
+                                             "capture_gap": "" if complete else "har-length-or-cap"})
+                stats["script_bodies"] += 1
             continue
         if is_static(path_) or rmime.startswith(STATIC_MIME):
             stats["static"] += 1

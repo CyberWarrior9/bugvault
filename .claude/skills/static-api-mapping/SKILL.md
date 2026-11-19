@@ -11,6 +11,6 @@ Preserve the exact authorized URL seed. Optional same-origin HTML BFS is bounded
 
 Keep frontend routes separate from backend endpoint families. Preserve methods as separate operations, exact path variants and query parameter names. A regex call-site match is a static reference, not proof that an endpoint exists or accepts the inferred parameters.
 
-Collect referenced source maps within scope; guessed `.map` requests additionally require loud mode. Do not promise complete webpack/Vite runtime-manifest reconstruction. Never submit possible client secrets or source-map exposure alone as confirmed vulnerabilities.
+Collect referenced source maps within scope; guessed `.map` requests additionally require loud mode. Recognized webpack 4/5, Vite and Next manifest shapes now produce bounded chunk leads, with federation/out-of-scope gaps recorded. These parsers are not a full runtime evaluator: do not promise complete build coverage. For already stored native/Burp script/map bodies, `python3 -m recon js sync <campaign>` is offline; `js status` remains incomplete until the full build-stage workflow exists. Never submit possible client secrets or source-map exposure alone as confirmed vulnerabilities.
 
 Output endpoint families, methods, path variants, parameter names, routes and source links. Implementation: `recon/extract.py`, `recon/active.py`.

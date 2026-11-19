@@ -92,7 +92,7 @@ def id_like(value: str) -> bool:
 
 # ---------------------------------------------------------------- JS extraction
 
-_STR = re.compile(r"""(["'`])((?:https?:)?//[^\s"'`<>\\]{3,300}|/[^\s"'`<>\\]{1,300})\1""")
+_STR = re.compile(r"""(["'`])((?:(?:https?|wss?):)?//[^\s"'`<>\\]{3,300}|/[^\s"'`<>\\]{1,300})\1""")
 _PATH_OK = re.compile(r"^/[A-Za-z0-9_\-./{}$:@~%+=,;!]*$")
 _METHOD_CALL = re.compile(r"\.(get|post|put|patch|delete|head)\s*\(\s*$", re.I)
 _METHOD_KV = re.compile(r"""method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD)["'`]""", re.I)
@@ -107,7 +107,16 @@ _PERM_DENY = re.compile(r"^(?:https?|wss?|mailto|data|javascript|tel|blob|about|
                         r"^\w+:\d+$|^(?:hh|mm|ss)\b")
 _CHUNK = re.compile(r"""["'`]((?:\.{0,2}/)?[\w\-./@]+\.m?js)["'`]""")
 _SOURCEMAP = re.compile(r"""[#@]\s*sourceMappingURL=([^\s'"*]+)""")
+_BARE_HOST = re.compile(r"""["']([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){1,8})["']""")
 _GQL_OP = re.compile(r"\b(query|mutation|subscription)\s+([A-Za-z_]\w*)\s*[({]")
+_GQL_ANON = re.compile(r"\b(query|mutation|subscription)\s*\{")
+_GQL_HASH = re.compile(r"""\bsha256Hash\s*:\s*["']([0-9a-fA-F]{64})["']""")
+_GQL_DOC = re.compile(r"\b(?:gql|graphql)\s*`([^`]{1,20000})`", re.S)
+_GQL_VAR = re.compile(r"\$([A-Za-z_]\w*)\s*:\s*([A-Za-z_][\w\[\]!]*)")
+_SERVER_ACTION = re.compile(r"""\bcreateServerReference\s*\(\s*["']([A-Za-z0-9_-]{8,128})["']
+    (?:[^;\n]{0,350}?,\s*["']([A-Za-z_$][\w$]{0,100})["'])?""", re.X)
+_DOT_PERM = re.compile(r"""["']([A-Za-z][\w-]{1,40}(?:\.[A-Za-z][\w-]{1,40}){2,4})["']""")
+_UPPER_PERM = re.compile(r"""["']([A-Z][A-Z0-9]*(?:_[A-Z0-9]{2,}){2,5})["']""")
 _HASH_ROUTING = re.compile(r"createWebHashHistory|createHashHistory|HashRouter|"
                            r"mode\s*:\s*[\"']hash[\"']|useHash\s*:\s*true|withHashLocation")
 SECRET_PATTERNS = {
@@ -115,6 +124,9 @@ SECRET_PATTERNS = {
     "google-api-key": re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
     "slack-token": re.compile(r"\bxox[abprs]-[0-9A-Za-z-]{10,}\b"),
     "stripe-live-secret": re.compile(r"\b[sr]k_live_[0-9a-zA-Z]{20,}\b"),
+    "stripe-public": re.compile(r"\bpk_(?:live|test)_[0-9a-zA-Z]{20,}\b"),
+    "supabase-publishable": re.compile(r"\bsb_publishable_[0-9A-Za-z_-]{20,}\b"),
+    "supabase-secret": re.compile(r"\bsb_secret_[0-9A-Za-z_-]{20,}\b"),
     "github-token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36}\b"),
     "private-key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
     "jwt": re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
@@ -135,6 +147,11 @@ class EndpointLiteral:
     raw: str
     method: Optional[str] = None
     params: List[str] = field(default_factory=list)
+    transport: str = "unknown"
+    headers: List[str] = field(default_factory=list)
+    base: str = ""
+    base_unresolved: bool = False
+    signed: bool = False
 
 
 @dataclass
@@ -149,6 +166,11 @@ class JsFindings:
     hash_routing: bool = False
     auth_gates: List[str] = field(default_factory=list)       # symbols for the runtime deep-pass
     crypto_entrypoints: List[str] = field(default_factory=list)  # pre-encryption hook points
+    host_refs: List[str] = field(default_factory=list)  # intel only; never an authorized URL
+    server_actions: List[Dict[str, str]] = field(default_factory=list)
+    persisted_hashes: List[str] = field(default_factory=list)
+    graphql_documents: List[Dict[str, object]] = field(default_factory=list)
+    client_flows: List[Dict[str, str]] = field(default_factory=list)
 
 
 def redact(secret: str) -> str:
@@ -160,14 +182,18 @@ def _balanced_object(text: str, start: int, limit: int = 600) -> str:
     if i < 0:
         return ""
     depth = 0
-    for j in range(i, min(len(text), i + limit)):
-        c = text[j]
-        if c == "{":
+    from .jslex import tokenize
+    try:
+        tokens = tokenize(text[i:i + limit])
+    except ValueError:
+        return text[i:i + limit]
+    for token in tokens:
+        if token.value == "{":
             depth += 1
-        elif c == "}":
+        elif token.value == "}":
             depth -= 1
             if depth == 0:
-                return text[i:j + 1]
+                return text[i:i + token.end]
     return text[i:i + limit]
 
 
@@ -254,7 +280,7 @@ def _window_params(text: str, end: int) -> List[str]:
 def _valid_path_literal(s: str) -> bool:
     if s.startswith("//"):
         return "." in s.split("/")[2] if len(s.split("/")) > 2 else False
-    if s.startswith("http"):
+    if s.startswith(("http", "ws")):
         return True
     path = s.split("?", 1)[0].split("#", 1)[0]
     if len(path) < 3 or not _PATH_OK.match(path) or _NOISE_PATHS.match(path):
@@ -266,11 +292,24 @@ def _valid_path_literal(s: str) -> bool:
 
 def extract_from_js(text: str) -> JsFindings:
     f = JsFindings()
+    from .jschunks import manifest_routes
+    from .jsops import operations
+    pages = manifest_routes(text)
+    manifest_at = text.find("__BUILD_MANIFEST")
+    calls = operations(text)
     seen: Set[str] = set()
     for m in _STR.finditer(text):
         s = m.group(2)
         if not _valid_path_literal(s):
             continue
+        if s in pages and manifest_at >= 0 and manifest_at <= m.start() < manifest_at + 6000:
+            continue  # manifest page keys are frontend routes, never API operations
+        before = text[max(0, m.start() - 55):m.start()]
+        if re.search(r"\bbaseURL\s*:\s*$|\b(?:const|let|var)\s+"
+                     r"(?:API|API_URL|BASE_URL|base|apiBase)\s*=\s*$", before):
+            continue  # a client base is a prefix, not a request
+        if any(op.start <= m.start() < op.end and op.raw != s for op in calls):
+            continue  # the call-site resolved a client base or folded this expression
         path_only = urlsplit(s if not s.startswith("//") else "https:" + s).path
         if is_static(path_only):
             continue
@@ -282,32 +321,92 @@ def extract_from_js(text: str) -> JsFindings:
         if key in seen:
             continue
         seen.add(key)
-        f.endpoints.append(EndpointLiteral(raw=s, method=method, params=params))
+        literal = EndpointLiteral(raw=s, method=method, params=params)
+        candidate = next((op for op in calls if op.start <= m.start() < op.end
+                          and op.raw == s and op.method == method), None)
+        if candidate:
+            literal.transport = candidate.transport
+            literal.headers = candidate.headers
+            literal.base = candidate.base
+            literal.base_unresolved = candidate.base_unresolved
+            literal.signed = candidate.signed
+            literal.params = list(dict.fromkeys(params + candidate.params))[:30]
+        f.endpoints.append(literal)
+    for op in calls:
+        if not _valid_path_literal(op.raw) or is_static(urlsplit(op.raw).path):
+            continue
+        key = f"{op.raw}|{op.method}"
+        if key not in seen:
+            f.endpoints.append(EndpointLiteral(op.raw, op.method, op.params,
+                                               op.transport, op.headers, op.base,
+                                               op.base_unresolved, op.signed))
+            seen.add(key)
     routes: List[str] = []
     for pat in _ROUTE_PATTERNS:
         for r in pat.findall(text):
             if r not in routes and len(r) < 120:
                 routes.append(r)
-    f.routes = routes[:300]
+    f.routes = list(dict.fromkeys(routes + pages))[:300]
     perms = []
     for p in _PERM.findall(text):
         if not _PERM_DENY.match(p) and p not in perms:
             perms.append(p)
+    for pat in (_DOT_PERM, _UPPER_PERM):
+        for p in pat.findall(text):
+            if not _PERM_DENY.match(p) and p not in perms:
+                perms.append(p)
     f.perms = perms[:500]
     for kind, pat in SECRET_PATTERNS.items():
         for s in set(pat.findall(text)):
             f.secrets.append((kind, redact(s)))
-    f.graphql_ops = sorted({f"{a} {b}" for a, b in _GQL_OP.findall(text)})[:300]
+    f.graphql_ops = sorted({f"{a} {b}" for a, b in _GQL_OP.findall(text)} |
+                            {f"{op} (anonymous)" for op in _GQL_ANON.findall(text)})[:300]
+    f.persisted_hashes = sorted(set(_GQL_HASH.findall(text)))[:100]
+    for doc in _GQL_DOC.findall(text)[:100]:
+        op = _GQL_OP.search(doc)
+        anon = _GQL_ANON.search(doc)
+        if not (op or anon):
+            continue
+        vars_ = [{"name": name, "type": typ} for name, typ in _GQL_VAR.findall(doc)[:40]]
+        fields_ = sorted(set(re.findall(r"\{\s*([A-Za-z_]\w*)", doc)))[:80]
+        f.graphql_documents.append({"operation": (op.group(1) + " " + op.group(2) if op else
+                                                    anon.group(1) + " (anonymous)"),
+                                    "variables": vars_, "top_fields": fields_})
+    f.server_actions = [{"id": aid, "name": name or "", "page": "unknown"}
+                        for aid, name in _SERVER_ACTION.findall(text)][:200]
+    # Same-window source/sink candidates only. None is an execution finding.
+    flows: List[Dict[str, str]] = []
+    for m in re.finditer(r"\bnew\s+URLSearchParams\s*\(\s*location\.(?:search|hash)\s*\)", text):
+        if re.search(r"\.innerHTML\s*=", text[m.end():m.end() + 200]):
+            flows.append({"kind": "url-to-html", "basis": "static-candidate"})
+    for m in re.finditer(r"\baddEventListener\s*\(\s*['\"]message['\"]", text):
+        handler = text[m.end():m.end() + 350].split("});", 1)[0]
+        if re.search(r"\b(?:eval\s*\(|innerHTML\s*=|fetch\s*\()", handler) and not re.search(
+                r"\b\w+\.origin\s*(?:===?|!==?)\s*|(?:===?|!==?)\s*\w+\.origin", handler):
+            flows.append({"kind": "unvalidated-message", "basis": "static-candidate"})
+    if re.search(r"\bpostMessage\s*\(\s*(?:\w*[Tt]oken\w*|\w*[Ss]ecret\w*)\s*,\s*['\"]\*['\"]", text):
+        flows.append({"kind": "token-postmessage", "basis": "static-candidate"})
+    for call in re.finditer(r"(?:fetch|axios\.\w+)\s*\(", text):
+        snippet = text[call.end():call.end() + 200].split(";", 1)[0]
+        if (re.search(r"[+`]\s*(?:params|route|location)\.\w+", snippet)
+                and "encodeURIComponent" not in snippet):
+            flows.append({"kind": "client-path-traversal", "basis": "static-candidate"})
+    f.client_flows = flows[:40]
     f.auth_gates = sorted(set(_AUTH_GATE.findall(text)))[:40]
     f.crypto_entrypoints = sorted(set(
         token.rstrip("(") for token in _CRYPTO_CALL.findall(text)))[:40]
+    f.host_refs = sorted({host for host in _BARE_HOST.findall(text)
+                          if not host.endswith((".js", ".map", ".json", ".png", ".css"))})[:100]
     chunks = []
     for c in _CHUNK.findall(text):
         if c not in chunks and not c.startswith("http"):
             chunks.append(c)
     f.chunks = chunks[:500]
-    sm = _SOURCEMAP.findall(text)
-    f.sourcemap = sm[-1] if sm else None
+    from .jslex import source_mapping_url
+    try:
+        f.sourcemap = source_mapping_url(text) or None
+    except ValueError:
+        f.sourcemap = None  # token budget failure is a collection gap, not a guessed map
     f.hash_routing = bool(_HASH_ROUTING.search(text))
     return f
 
@@ -325,14 +424,36 @@ def decode_inline_sourcemap(ref: str) -> Optional[dict]:
 
 def sourcemap_sources(sm: dict) -> List[Tuple[str, str]]:
     """(source_name, content) pairs, skipping vendored/bootstrap code."""
-    names = sm.get("sources") or []
-    contents = sm.get("sourcesContent") or []
-    out = []
-    for i, name in enumerate(names):
-        content = contents[i] if i < len(contents) else None
-        if not content or "node_modules/" in name or "webpack/bootstrap" in name:
-            continue
-        out.append((name, content))
+    if not isinstance(sm, dict):
+        return []
+    out: List[Tuple[str, str]] = []
+
+    def visit(section: dict, depth: int) -> None:
+        if depth > 8 or len(out) >= 3000 or not isinstance(section, dict):
+            return
+        if isinstance(section.get("sections"), list):
+            for entry in section["sections"][:300]:
+                if isinstance(entry, dict) and isinstance(entry.get("map"), dict):
+                    visit(entry["map"], depth + 1)
+            return
+        names = section.get("sources") or []
+        contents = section.get("sourcesContent") or []
+        ignored = section.get("ignoreList") or section.get("x_google_ignoreList") or []
+        ignored = set(i for i in ignored if type(i) is int) if isinstance(ignored, list) else set()
+        root = section.get("sourceRoot") or ""
+        if not isinstance(names, list) or not isinstance(contents, list) or not isinstance(root, str):
+            return
+        for i, name in enumerate(names[:3000]):
+            content = contents[i] if i < len(contents) else None
+            if (i in ignored or not isinstance(name, str) or not isinstance(content, str)
+                    or not content or "node_modules/" in name or "webpack/bootstrap" in name):
+                continue
+            full_name = root.rstrip("/") + "/" + name.lstrip("/") if root else name
+            out.append((full_name, content))
+            if len(out) >= 3000:
+                break
+
+    visit(sm, 0)
     return out
 
 
@@ -343,11 +464,13 @@ class PageParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.scripts: List[str] = []
         self.inline_scripts: List[str] = []
+        self.import_maps: List[str] = []
         self.links: List[str] = []
         self.forms: List[Dict] = []
         self.standalone: List[Dict] = []   # named inputs OUTSIDE any <form>
         self.title = ""
         self._in_script = False
+        self._script_type = ""
         self._in_title = False
         self._buf: List[str] = []
         self._form: Optional[Dict] = None
@@ -357,9 +480,13 @@ class PageParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         a = {k.lower(): (v or "") for k, v in attrs}
         if tag == "script":
-            if a.get("src"):
+            if a.get("type", "").lower() == "importmap":
+                self._script_type = "importmap"
+                self._in_script, self._buf = True, []
+            elif a.get("src"):
                 self.scripts.append(a["src"])
             else:
+                self._script_type = "javascript"
                 self._in_script, self._buf = True, []
         elif tag == "link" and a.get("href") and (
                 a.get("rel", "").lower() in ("modulepreload", "preload", "prefetch")
@@ -398,8 +525,10 @@ class PageParser(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "script" and self._in_script:
-            self.inline_scripts.append("".join(self._buf))
+            (self.import_maps if self._script_type == "importmap" else
+             self.inline_scripts).append("".join(self._buf))
             self._in_script = False
+            self._script_type = ""
         elif tag == "form":
             self._form = None
         elif tag == "label":

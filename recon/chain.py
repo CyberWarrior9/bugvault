@@ -57,6 +57,11 @@ REALISM_OUTCOMES = ("pass", "fail", "unanswered")
 # Hand-written multi-step chains; two-step chains are derived from
 # findings.CHAIN_HINTS so the hint table stays the single source of truth.
 STEP_CHAINS: Tuple[Tuple[str, str, Tuple[Tuple[str, str], ...]], ...] = (
+    ("takeover-oauth-ato",
+     "Proven owned hostname control -> accepted OAuth redirect/code use -> owned-account access",
+     (("subdomain-takeover", "prove candidate-host marker control with distinct controls and authorized cleanup"),
+      ("oauth", "prove the server accepts this redirect and delivers a usable code despite client/PKCE checks"),
+      ("ato", "prove access to the supplied victim test account; a redirect reference is not takeover"))),
     ("redirect-oauth-ato",
      "Open redirect -> OAuth code theft -> account takeover",
      (("open-redirect", "reachable redirect from an OAuth start URL"),

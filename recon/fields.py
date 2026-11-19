@@ -101,7 +101,7 @@ LOCATIONS = ("query", "form", "json", "multipart", "header", "cookie", "path", "
 STATES = ("untested", "probed", "mapped", "observed", "negative", "blocked", "inconclusive", "n-a")
 TRIGGERS = ("list", "search", "filter", "create", "edit", "bulk", "export", "sort")
 CLAIMS = ("partial", "full")
-FINGERPRINT_KINDS = ("db", "csp")
+FINGERPRINT_KINDS = ("db", "csp", "template")
 MARKER_PREFIX = "bv_"
 REALISM_ANSWERS = ("pass", "fail", "unanswered")
 
@@ -405,7 +405,130 @@ class FieldLedger:
                 "claim_updated": claim_row["updated"] if claim_row else None,
                 "basis": "cells come from real captured observations per trigger shape; "
                          "some modules legitimately lack a trigger - record it n-a with "
-                         "a reason instead of leaving it missing"}
+                          "a reason instead of leaving it missing"}
+
+    def diff(self, module: str) -> Dict[str, Any]:
+        """Value-free, context-separated sent-versus-declared field comparison.
+
+        An explicit ``authz_resource`` asset attribute may join different routes;
+        otherwise the exact path is the resource key. ``module_of`` only selects
+        candidates, never establishes that their policies are equivalent.
+        """
+        if not isinstance(module, str) or not 1 <= len(module) <= 200:
+            raise ValueError("module must be a 1..200 character label")
+        groups: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+        truncated = {"assets": 0, "observations": 0, "groups": 0}
+        assets = [a for a in self._module_assets(module) if a["kind"] == "endpoint"]
+        for asset in assets[:200]:
+            parts = urlsplit(asset["value"])
+            origin = f"{parts.scheme}://{parts.netloc}"
+            path = parts.path or "/"
+            resource = asset["attrs"].get("authz_resource") or path
+            if not isinstance(resource, str) or not resource or len(resource) > 200:
+                resource = path
+            version = next((s for s in path.split("/") if re.fullmatch(r"v\d+", s.lower())), "")
+            observations = self.ctx.store.observations(asset["id"])
+            truncated["observations"] += max(0, len(observations) - 500)
+            for o in observations[:500]:
+                c = o.get("context") or {}
+                meta = c.get("csrf_meta") or {}
+                representation = meta.get("content_type") or (
+                    "none" if (o.get("method") or "").upper() in ("GET", "HEAD", "OPTIONS")
+                    else "unknown")
+                if not isinstance(representation, str):
+                    representation = "unknown"
+                auth = meta.get("auth") or "UNKNOWN"
+                if not isinstance(auth, str):
+                    auth = "UNKNOWN"
+                method = (o.get("method") or "UNKNOWN").upper()
+                exact_path = c.get("path") or path
+                if not isinstance(exact_path, str) or not exact_path.startswith("/"):
+                    exact_path = path
+                # An endpoint asset is a path *family*. Do not merge different
+                # concrete object paths under its template, or print raw IDs.
+                instance = hashlib.sha256(exact_path.encode()).hexdigest()[:16]
+                if c.get("path") is None and "{" in path:
+                    instance = f"unlabelled:{o['id']}"
+                selectors = meta.get("graphql_operations") or []
+                if "graphql" in path.lower() or "gql" in path.lower():
+                    selector = selectors[0] if len(selectors) == 1 and isinstance(selectors[0], str) \
+                        else f"unresolved:{o['id']}"
+                else:
+                    selector = ""
+                # Unknown is kept distinct from the genuinely anonymous account.
+                key = (origin, resource, version, o.get("account") or "UNKNOWN",
+                       c.get("role") or "UNKNOWN", c.get("tenant") or "UNKNOWN",
+                       c.get("workflow_state") or "UNKNOWN", representation, auth, instance,
+                       selector)
+                # Missing labels cannot establish that two samples share a policy
+                # context. Keep them as individual groups until the operator supplies
+                # a labelled capture; do not pool all UNKNOWN tenants together.
+                if "UNKNOWN" in key[3:9]:
+                    key += (f"observation:{o['id']}",)
+                group = groups.setdefault(key, {"context": dict(zip(
+                    ("origin", "resource", "version", "account", "role", "tenant",
+                     "workflow", "representation", "auth", "resource_instance"),
+                    key[:10])), "operations": {}})
+                group["context"]["selector"] = selector
+                op = group["operations"].setdefault((asset["id"], method, path, selector), {
+                    "asset_id": asset["id"], "method": method, "path": path,
+                    "samples": [], "sent": {}, "triggers": set(), "source": set()})
+                if len(op["samples"]) < 50:
+                    op["samples"].append(o["id"])
+                op["source"].add(o.get("source") or "unknown")
+                params = o.get("params") or {}
+                names = list(params.get("query") or []) + list(params.get("body") or [])
+                op["triggers"].add("delete" if method == "DELETE" else
+                                   infer_trigger(method, asset["value"], names))
+                for loc in ("query", "body", "header", "cookie"):
+                    op["sent"].setdefault(loc, set()).update(
+                        name for name in (params.get(loc) or []) if isinstance(name, str))
+        truncated["assets"] = max(0, len(assets) - 200)
+        output = []
+        for key in sorted(groups)[:200]:
+            group = groups[key]
+            ops = []
+            for (aid, method, path, selector), op in sorted(group["operations"].items()):
+                asset = self.ctx.store.get_asset(aid)
+                declared = {}
+                for entry in asset["attrs"].get("spec_fields") or []:
+                    if (entry.get("method") or "").upper() != method:
+                        continue
+                    loc = entry.get("location") or "unknown"
+                    if loc in ("form", "multipart", "json"):
+                        loc = "body"
+                    declared.setdefault(loc, set()).add(entry.get("name") or "")
+                sent = {loc: sorted(names) for loc, names in op["sent"].items() if names}
+                spec = {loc: sorted(names - {""}) for loc, names in declared.items()}
+                ops.append({"asset_id": aid, "method": method, "path": path,
+                            "selector": selector,
+                            "observations": op["samples"], "sources": sorted(op["source"]),
+                            "triggers": sorted(op["triggers"]), "sent": sent, "declared": spec,
+                            "sent_not_declared": {loc: sorted(names - declared.get(loc, set()))
+                                                  for loc, names in op["sent"].items() if
+                                                  names - declared.get(loc, set())},
+                            "declared_not_observed": {loc: sorted(names - op["sent"].get(loc, set()))
+                                                      for loc, names in declared.items() if
+                                                      names - op["sent"].get(loc, set())}})
+            for op in ops:
+                own = {(loc, field) for loc, names in op["sent"].items() for field in names}
+                other = {(loc, field) for peer in ops if peer is not op
+                         for loc, names in peer["sent"].items() for field in names}
+                op["trigger_exclusive"] = sorted(f"{loc}:{name}" for loc, name in own - other) \
+                    if len(ops) > 1 else []
+            output.append({"context": group["context"], "operations": ops,
+                           "comparable": len(ops) > 1,
+                           "note": "same explicit resource or exact path and context; different "
+                                   "methods/operations remain separate rows"})
+        truncated["groups"] = max(0, len(groups) - 200)
+        return {"module": module, "groups": output, "truncated": truncated,
+                 "not_comparable": "Different origin/resource/version/account/role/tenant/"
+                                   "workflow/representation/auth/concrete-path/operation-selector groups "
+                                   "are never merged; unknown "
+                                   "labels are not evidence of equality",
+                "basis": "sent names versus method-matched spec declarations; a sent field is "
+                         "not server-accepted, and this view does not change trigger completeness",
+                "executed": False}
 
     def set_na(self, module, trigger, reason) -> Dict[str, Any]:
         if trigger not in TRIGGERS:
@@ -631,6 +754,9 @@ class FieldLedger:
         db_fp = self.db.execute(
             "SELECT value FROM field_fingerprints WHERE asset_id=? AND kind='db'",
             (asset_id,)).fetchone()
+        tpl_fp = self.db.execute(
+            "SELECT value FROM field_fingerprints WHERE asset_id=? AND kind='template'",
+            (asset_id,)).fetchone()
         packet = {
             "schema_version": 1,
             "field": str(field), "method": row["method"], "location": row["location"],
@@ -639,21 +765,25 @@ class FieldLedger:
             "surviving_chars": waf["surviving_chars"],
             "blocked_elements": waf["blocked_elements"],
             "db_fingerprint": db_fp["value"] if db_fp else "",
+            **({"template_fingerprint": tpl_fp["value"] if tpl_fp else ""}
+               if case_id.startswith("ssti-") else {}),
             "csp": self._csp(asset),
             "method_grants": sorted(self.ctx.policy.allowed_methods),
             "sink_surfaces": sorted({s["surface"] for s in surfaces}),
             "waf_ref": waf["waf_ref"],
             "canary_ref": canaries[0]["marker"] if canaries else "",
         }
-        missing = [k for k in ("context_map", "surviving_chars", "blocked_elements",
-                               "db_fingerprint", "csp", "waf_ref", "canary_ref")
+        required = ("context_map", "surviving_chars", "blocked_elements", "waf_ref", "canary_ref")
+        required += (("template_fingerprint",) if case_id.startswith("ssti-") else
+                     ("db_fingerprint", "csp"))
+        missing = [k for k in required
                    if packet.get(k) in (None, "", [], {})]
         if missing:
             raise ValueError("context packet is incomplete; record the missing pieces first: "
                              + "; ".join(
                                  f"{k} (recon fields fingerprint --kind "
-                                 f"{'db' if k == 'db_fingerprint' else 'csp'})"
-                                 if k in ("db_fingerprint", "csp") else
+                                  f"{'db' if k == 'db_fingerprint' else 'template' if k == 'template_fingerprint' else 'csp'})"
+                                  if k in ("db_fingerprint", "csp", "template_fingerprint") else
                                  f"{k} (recon waf observe/record or fields canary/trace)"
                                  for k in missing))
         blob = json.dumps(packet, sort_keys=True).encode()

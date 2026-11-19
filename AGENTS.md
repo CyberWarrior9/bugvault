@@ -6,8 +6,27 @@ Start with `Handover.md`, then `recon/README.md`. Keep model routing preferences
 
 ## Shared files and tools
 
-- All 18 project skills are in `.claude/skills/<id>/SKILL.md`. Read `scope-policy`
+- All 26 project skills are in `.claude/skills/<id>/SKILL.md`. Read `scope-policy`
   before testing, then the skill named in the campaign's `coverage.md`.
+- `subdomain-takeover` rows load `hunt-takeover`. `recon takeover import|sync|plan|
+  show|record|cleanup|status|verify` is offline: typed DNS captures, parent referrals,
+  wildcard controls, hostname history, dated provider leads and conditional trust
+  edges. No DNS collector, resource registration or certificate executor is added.
+  `takeover.grants` and its shared declared budget gate live evidence recording
+  only, not traffic. Claims require current precheck/claimability artifacts and
+  distinct before/after/control markers; preserve cleanup receipts. CSP allowlists,
+  cookie domains, CORS headers and redirect references never prove a chain alone.
+  The owned provider simulation is not live provider/TLS/browser validation.
+- Cloud references load `hunt-cloud-misconfig`. `recon cloud import|generate|sync|plan|
+  show|record|status|verify` is a **partial, offline** source-qualified lead/evidence
+  workflow. `generate` only proposes bounded, scope-checked hostnames on explicitly
+  allowed program wildcards; it never probes, claims or queues provider namespaces.
+  The workflow does not exchange credentials, pivot
+  identities, execute cloud operations, launch Prowler, certify IAM or promote
+  findings. `cloud.grants` and its declared budget gate live-labelled evidence
+  recording only; browser/Burp, native HTTP and any future SDK traffic need their
+  own written scope, action, method, rate and cost approval. The R1–R8 plan is
+  future work, not a standing permission or a tested provider pilot.
 - `ssrf` rows load `hunt-ssrf`: its 29-case context ledger and `recon ssrf`
   commands are offline only. Three attempts do not complete endpoint-wide SSRF
   coverage; preserve blocked/inconclusive cases. Deep branches (dns, internal,
@@ -19,6 +38,42 @@ Start with `Handover.md`, then `recon/README.md`. Keep model routing preferences
   GraphQL operations and realtime handshakes included). Cross-origin attempts start in
   the dedicated browser from a recorded initiator origin; replays are diagnostics.
   Three attempts are a per-case effort cap, never class completion.
+- `ssti` rows load `hunt-ssti`: `recon ssti probes|surface|trace|plan|record|status|verify`
+  generates only inert arithmetic/literal controls and classifies stored raw
+  evidence per independent render surface. Shared delimiters are not an engine
+  fingerprint. `ssti.depth_grants` (`context`, `file-read`, `execution`) unlock offline
+  `cred-read`/`token-use`/`lateral` evidence with hash-bound, redacted artifacts;
+  the ledger never reads a credential, sends a request or moves laterally, and the
+  operator must have performed any live action under the written program rules.
+  This is not a sandbox escape or native execution workflow, and cannot promote a
+  finding automatically.
+- `access-control` and `mass-assignment` rows load `hunt-access-control`:
+  `recon authz sync|plan|record|status|verify` is an offline exact-operation/context
+  ledger; `recon fields diff` compares sent versus declared names without claiming
+  server acceptance. DELETE is a mass-assignment candidate, not a license to
+  delete. `authz` grants gate evidence recording only; live work still needs written
+  scope/method/budget approval and a connected execution path. Object swaps stay
+  with `hunt-idor`; neither a case event nor a secret-looking string is a finding.
+- `file-upload` rows load `hunt-file-upload`: `recon upload sync|declare|plan|fixture|
+  record|callback|cleanup|resume|status|verify` is an offline sink × context × 24-case
+  lifecycle ledger. Accepted, stored, reachable, processed, served, executed and effect
+  are separate artifact-backed facts; a 201, thumbnail or callback is not execution.
+  Live records need `program_url`, `upload.rules_reviewed`, the method grant, the case's
+  `upload.case_grants` family and a positive `upload.budget` shared by browser, Burp,
+  native and scanner traffic. A 429, 5xx, challenge, lost receiver or unresolved cleanup
+  stops the host until `upload resume`. Fixtures are tiny inert marker files; there is
+  no payload generator, upload executor or callback listener.
+- `business-logic` and `race-conditions` rows load `hunt-business-logic` and
+  `hunt-race-conditions` respectively. `recon logic` and `recon race` share an offline
+  schema-1 owned workflow/invariant model; BL-00 is an unadjudicated anomaly lead,
+  BL-01–18 and RC-01–21 are candidates, not endpoint-wide coverage. `race attest`
+  records a human operator's Burp/Turbo gate/version/attempt declaration after the
+  operator's own approved exercise; this is **not** an agent-run synchronized send
+  or recon-enforced external budget. Only 2–8 exact writers and one declared send
+  per writer (no retry) are supported for this M5a import; missing responses stay
+  charged and unresolved. The owned-loopback lab test does not authorize target
+  concurrency. M5b/M6 transport, cross-process reservation and a live pilot remain
+  separate human decisions. Neither ledger creates a finding or certifies a case.
 - `recon chain status` is the cross-class todolist: ready steps first, proven
   means a finding reached confirmed (replay + negative control). It orders the
   hunt offline; it never executes or promotes.

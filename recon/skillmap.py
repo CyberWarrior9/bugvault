@@ -17,13 +17,23 @@ SKILLS_DIR = REPO / SKILLS_DIR_REL
 
 # Coverage class -> skills to load, primary first.
 SKILLS_FOR_CLASS: Dict[str, Tuple[str, ...]] = {
+    "cloud-misconfiguration": ("hunt-cloud-misconfig",),
+    "subdomain-takeover": ("hunt-takeover",),
     "ssrf": ("hunt-ssrf",),
     "idor-bola": ("hunt-idor",),
+    "access-control": ("hunt-access-control",),
+    "mass-assignment": ("hunt-access-control",),
     "xss": ("hunt-xss",),
     "html-injection": ("hunt-xss",),
     "sqli": ("hunt-sqli",),
-    "ssti": ("hunt-sqli",),
+    # Do not route SSTI to SQLi: expression evaluation needs its own proof standard.
+    "ssti": ("hunt-ssti",),
     "csrf": ("hunt-csrf",),
+    "file-upload": ("hunt-file-upload",),
+    "info-disclosure": ("hunt-js-bundle",),
+    "js-bundle": ("hunt-js-bundle",),
+    "business-logic": ("hunt-business-logic",),
+    "race-conditions": ("hunt-race-conditions",),
     "ato": ("hunt-auth-bypass", "hunt-ato"),
     "mfa-bypass": ("hunt-mfa-bypass",),
     "oauth": ("hunt-oauth",),

@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "source": "owned synthetic example; no live DNS or provider verification",
+  "observations": [
+    {
+      "name": "old.acme.test",
+      "record_type": "CNAME",
+      "value": "unused.herokuapp.com",
+      "result": "answer",
+      "resolver": "192.0.2.53",
+      "observed_at": "2026-11-16T10:00:00Z",
+      "vantage": "recursive"
+    },
+    {
+      "name": "unused.herokuapp.com",
+      "record_type": "A",
+      "value": "",
+      "result": "nxdomain",
+      "resolver": "192.0.2.53",
+      "observed_at": "2026-11-16T10:00:00Z",
+      "vantage": "recursive"
+    },
+    {
+      "name": "unused.herokuapp.com",
+      "record_type": "AAAA",
+      "value": "",
+      "result": "servfail",
+      "resolver": "192.0.2.53",
+      "observed_at": "2026-11-16T10:00:00Z",
+      "vantage": "recursive"
+    },
+    {
+      "name": "bvcontrol1a.acme.test",
+      "record_type": "CNAME",
+      "value": "",
+      "result": "nxdomain",
+      "resolver": "192.0.2.53",
+      "observed_at": "2026-11-16T10:00:00Z",
+      "vantage": "wildcard-control",
+      "control_for": "old.acme.test"
+    },
+    {
+      "name": "bvcontrol2b.acme.test",
+      "record_type": "CNAME",
+      "value": "",
+      "result": "timeout",
+      "resolver": "192.0.2.53",
+      "observed_at": "2026-11-16T10:00:00Z",
+      "vantage": "wildcard-control",
+      "control_for": "old.acme.test"
+    }
+  ]
+}

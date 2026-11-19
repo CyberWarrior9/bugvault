@@ -12,6 +12,11 @@ from .skillmap import SKILLS_DIR_REL, SKILLS_FOR_CLASS
 ARTEX_COMMIT = "9bf5d816aeb361d79de874fcdbeeb0de31bd83f2"
 # Hunting skills (same folder as the phase guides). Coverage classes come from SKILLS_FOR_CLASS.
 HUNT_SKILLS = (
+    ("hunt-cloud-misconfig", "Cloud references and exact-operation evidence: offline extraction/triage, "
+                              "operator receipts and integrity checks; no cloud API, SDK, guessing, "
+                              "credential validation, impact executor or finding promotion"),
+    ("hunt-takeover", "Offline DNS/referral/wildcard and stale-host graph, provider freshness, "
+                      "conditional trust ranking and operator claim/cleanup evidence; no claimer"),
     ("hunt-ssrf", "SSRF: browser/Burp-only live workflow, attributed canaries, parser/redirect/DNS "
                   "matrix, scoped internal/cloud branches, offline case ledger and callback correlation"),
     ("hunt-idor", "IDOR/BOLA/BFLA: object/identity substitution across path/query/body/header/GraphQL, "
@@ -24,9 +29,26 @@ HUNT_SKILLS = (
                   "UNION/second-order variants with differential triples, minimal-extraction proofs "
                   "and gated chain targets"),
     ("hunt-csrf", "CSRF: per-origin action x context x case ledger (fieldless actions, GET "
-                  "mutations, GraphQL operations and realtime handshakes included), fifteen case "
-                  "families from token channels and SameSite delivery to client-side, SSO, "
-                  "WebSocket and BFF defenses, browser-initiated exercises and ATO chains"),
+                   "mutations, GraphQL operations and realtime handshakes included), fifteen case "
+                   "families from token channels and SameSite delivery to client-side, SSO, "
+                   "WebSocket and BFF defenses, browser-initiated exercises and ATO chains"),
+    ("hunt-ssti", "SSTI: offline inert expression probes, per-input and per-render-surface "
+                   "marker/control evidence, grant-gated cred-read/token-use/lateral evidence, "
+                   "family-only fingerprints and no automatic finding promotion"),
+    ("hunt-access-control", "Broken function/field/tenant access control and mass assignment: "
+                            "offline path/context case ledger, value-free field diff, "
+                            "grant-gated operator evidence and critical-signal routing; no executor"),
+    ("hunt-file-upload", "File upload lifecycle: sink inventory incl. signed storage, resumable and "
+                          "URL import; intake/storage/processing/publication/retrieval/deletion as "
+                          "separate artifact-backed facts, owner-log layer attribution, callback "
+                          "ladder, one shared budget, stop rules, cleanup receipts and inert fixtures"),
+    ("hunt-js-bundle", "Bounded JS build/asset graph, partial J01–J17 static leads, stale-build "
+                         "and delivery observations, value-free packets and destination handoff; "
+                         "open stages are not full build coverage"),
+    ("hunt-business-logic", "BL-00 anomaly-first differential and BL-01..18 exact-invariant "
+                             "offline ledger, terminal tiers, owned controls and cleanup; no executor"),
+    ("hunt-race-conditions", "RC-01..21 exact-writer offline scenarios, bounded measurement, "
+                              "source-labelled signals and M5a operator attestation; no gate sender"),
     ("hunt-auth-bypass", "Login bypass: missing auth, trusted headers/cookies, JWT, reset tokens, "
                          "magic links, session fixation, internal self-signup"),
     ("hunt-ato", "Account-takeover chain target: reset tokens, reset-link host poisoning, email change, "
@@ -55,6 +77,13 @@ PHASES = (
 
 # All entries are explicit about integration, not merely names that happen to be in PATH.
 TOOLS = (
+    ("Cloud candidate/evidence ledger", None, "native-offline", "hunt-cloud-misconfig",
+     "recon cloud import/generate/sync/plan/show/record/status/verify: stored-source references, "
+     "bounded in-scope hostname proposals and "
+     "operator evidence, no provider requests or automatic finding"),
+    ("Takeover evidence ledger", None, "native-offline", "hunt-takeover",
+     "recon takeover import/sync/plan/show/record/cleanup/status/verify: bounded DNS capture import, "
+     "host lifecycle and conditional trust edges; no DNS collector, provider claim or finding promotion"),
     ("crt.sh", None, "native", "passive-discovery", "Certificate transparency HTTP source"),
     ("Wayback CDX", None, "native", "passive-discovery", "Archived URL HTTP source"),
     ("stdlib HTTP/DNS/parsers", None, "native", "service-mapping,static-api-mapping", "Python implementation"),
@@ -79,6 +108,25 @@ TOOLS = (
     ("SSRF workflow", None, "native-offline", "hunt-ssrf", "recon ssrf plan/record/status/correlate: offline matrix, hashed artifacts and interaction correlation; no traffic generator or automatic finding verdict"),
     ("Chain todolist", None, "native-offline", "inventory-handoff", "recon chain status/add: cross-class ready/waiting/proven steps over findings and validated custom chains; orders the hunt, executes nothing"),
     ("CSRF action ledger", None, "native-offline", "hunt-csrf", "recon csrf sync/plan/record/status/verify: per-origin action x context x case inventory with facet-scoped reopening, hash-bound browser-attempt artifacts and coarse-coverage conflict listing; sends no traffic, runs no browser or scanner"),
+    ("SSTI evidence ledger", None, "native-offline", "hunt-ssti", "recon ssti probes/surface/trace/fingerprint/plan/record/status/verify: inert arithmetic probes, raw response/artifact classification, independent surface controls and grant-gated cred-read/token-use/lateral evidence; no target traffic, credential use, lateral action or exploit executor"),
+    ("Authorization case ledger", None, "native-offline", "hunt-access-control",
+     "recon authz sync/plan/record/status/verify and fields diff: exact-context candidate inventory, "
+     "fail-closed offline grants, hash-bound operator evidence and coarse conflicts; no traffic or automatic finding"),
+    ("Upload lifecycle ledger", None, "native-offline", "hunt-file-upload",
+     "recon upload sync/declare/plan/fixture/record/callback/cleanup/resume/status/verify: "
+     "24 lifecycle cases, independent stage facts, hash-bound evidence, fail-closed grants, "
+     "shared declared budget and stop rules; no upload executor, payload generator, scanner "
+      "or callback listener"),
+    ("JS build/lead ledger", None, "native-offline", "hunt-js-bundle",
+      "recon js sync/status/builds/plan/show/diff/record/pair/verify/export/resume: stored "
+      "response graph, bounded stale asset queue, value-free packets and integrity checks; "
+      "no JS endpoint probes, completed stage grading or finding promotion"),
+    ("Business invariant ledger", None, "native-offline", "hunt-business-logic",
+     "recon logic sync/declare/probe/observe/record/cleanup/status/verify: anomaly-first leads "
+     "and owned-resource typed evidence; no target requests or finding promotion"),
+    ("Race scenario ledger", None, "native-offline", "hunt-race-conditions",
+     "recon race sync/declare/profile/plan/attest/record/status/verify: source-labelled "
+     "operator declarations and lab cases; agent-driven synchronized sending blocked"),
     ("Input census", None, "native-offline", "hunt-xss,hunt-sqli,hunt-idor", "recon inputs: per-endpoint field inventory with locations, accounts, sensitive-name flags, coverage join and stored-probe receipts; read-only, never guesses hidden params"),
     ("Burp MCP", None, "mcp-external", "captured-auth-mapping,inventory-handoff", "Project opencode.json/.mcp.json share localhost:9876/mcp across tool-capable models; 27 tools discovered on 2026-11-12; not a recon-enforced executor"),
     ("Burp Repeater", None, "manual-only", "hunt-mfa-bypass", "MCP can prepare tabs, but has no parallel-group send; no synchronized or shared-budget executor; see .claude/skills/scope-policy/references/burp-workflow.md"),

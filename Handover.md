@@ -1,9 +1,12 @@
 # Handover — BugVault Setup
 
-> Complete guide to this repository as of **2026-11-12**. Written for someone
+> Guide to this repository, with JS bundle inventory and earlier SSTI, authorization and upload checkpoints as of **2026-11-15**. For the 2026-11-16 invariant/race additions and their limits, see the last section. Written for someone
 > (human or agent) taking over the project cold. Read this top to bottom, then
 > `recon/README.md` for the deep recon detail, then `docs/model-routing.md` for
 > the model policy.
+
+> The new cloud-misconfiguration slice is recorded in the final 2026-11-16
+> checkpoint below. Earlier 674-test/25-skill figures are historical baselines.
 
 ---
 
@@ -12,9 +15,10 @@
 BugVault is an **authorized bug-bounty hunting knowledge base and recon engine**:
 
 - A git-versioned Obsidian vault (the "AI context layer") built on HackerOne's
-  disclosed-reports dataset — 15,443 unique report IDs, 85 study dossiers.
+  disclosed-reports dataset — 15,443 unique report IDs, 85 tracked study dossiers
+  plus four untracked race-class dossiers in the current working tree.
 - A runnable, **scope-enforced recon engine** (`recon/`) that maps attack surface
-  deterministically: 1 sequential scheduler, 8 job handlers, 0 LLM agents.
+  deterministically: 1 sequential scheduler, 9 job handlers, 0 LLM agents.
 - A finding lifecycle with hard evidence gates (replay + negative control).
 - Design plans (plans 1–4) for the full hunting platform that is **not yet built**.
 
@@ -26,12 +30,17 @@ testing.
 
 | Capability | State |
 |---|---|
-| Test suite | **363 tests passing** in `.venv` (incl. the loopback runtime and two-origin CSRF browser tests); system Python skips those two optional Playwright tests |
+| Test suite | **674 run, all passed, 0 skipped** with `.venv/bin/python -m unittest discover -s tests -q` on 2026-11-16, including takeover DNS/trust/evidence regressions and the owned provider simulation. No live target tested. |
 | Ready for | Owned local demo (recon → inventory → evidence → reports) |
+| Takeover workflow | `hunt-takeover` + `recon takeover import/sync/plan/show/record/cleanup/status/verify`: offline typed DNS/referral/wildcard captures, dated provider assertions, host lifecycle and conditional trust graph, claim receipts and cleanup. No new DNS collector, automatic claimer, TLS/browser verification or finding promotion. See `plans/subdomain-takeover.md` and `docs/takeover-acceptance.md`. |
 | Conditional for | Supervised small recon pilot on an authorized real target |
 | NOT ready for | Autonomous hunting, model-driven payload testing |
 | LLM agents running | **0** — briefs/guides are documents, not processes |
-| Skills | **18**, all in `.claude/skills/` (8 recon guides + 10 hunting skills: 5 auth + SSRF + IDOR + XSS + SQLi + CSRF). OpenCode and Claude Code load them in sessions inside this repo; the engine loads none. |
+| Skills | **26**, all in `.claude/skills/` (8 recon guides + 18 hunting skills, including the partial `hunt-cloud-misconfig` workflow). OpenCode and Claude Code load them in sessions inside this repo; the engine loads none. |
+| JS bundle hunt | **Partial implementation:** truthful Burp/map truncation; webpack/Vite/Next references; bounded precache/import-map graph; offline identified-build snapshots, `js_only`/`zombie` diffs, value-free packets, per-rung status receipts and J17 paired delivery observations; optional HAR script/map response bodies; evidence-gated `info-disclosure` and per-service `js-bundle` rows; and `recon js sync/status/builds/plan/show/diff/record/pair/verify/export/resume`. `jsretained` jobs are opt-in, previously captured old paths and use a separate scoped `recon run`. **Not complete:** full stage graders, dataflow/extraction families, destination proof and Gates A/B/C; `complete=false` is expected. M6 probes and M7 importers deferred. No real targets contacted. |
+| File-upload workflow | `hunt-file-upload` + `recon upload` offline sink × context × 24-case lifecycle ledger: per-request sink inventory incl. signed storage, resumable, raw-body and URL import; accepted/stored/reachable/processed/served/executed/effect as separate artifact-backed facts; owner-log layer attribution; callback ladder; one declared budget across browser/Burp/native/scanner; 429/5xx/stop triggers block the host until `upload resume`; cleanup receipts with retention deadlines; tiny inert marker fixtures. Owned-loopback lab covers lifecycle, format policy, size boundary, async, resumable totals, derivatives, static serving, receiver attribution, layer separation and cleanup. **Not** an upload executor, payload or bypass-variant generator, scanner or callback listener; no live target contacted. |
+| Access-control workflow | `hunt-access-control` + `recon authz` offline exact-operation/context/case ledger, `recon fields diff` sent-versus-declared view, DELETE mass-assignment candidate seeding, hash-bound operator artifacts and fail-closed grant labels. Owned-loopback HAR-import fixtures cover role/tenant, OData-like/GraphQL field policy, override, form/batch, version/export, synthetic chain and applied/ignored mass assignment; **not** a live scanner, automatic finding validator or shared Burp budget enforcer. |
+| SSTI workflow | `hunt-ssti` + offline, inert arithmetic/control probes per captured role/tenant/workflow context and independent raw render-surface evidence (`recon ssti`). Confirmation needs two results, a literal control and ordered request receipts. Offline, grant-gated `cred-read`/`token-use`/`lateral` evidence raises the ceiling from medium to high/critical; it records operator artifacts and never reads a credential, sends a request or moves laterally. No engine identification, sandbox-escape automation, native execution or model router. |
 | CSRF workflow | `hunt-csrf` + offline per-origin action × context × case ledger (`recon csrf sync/plan/record/status/verify`): fieldless/GET/GraphQL/realtime actions, 15 case families, facet-scoped reopening, browser-initiator record rules. Owned two-origin Chromium lab in the test suite. Not an exploit runner. |
 | SSRF workflow | `hunt-ssrf` + 29-case offline ledger/correlation (`recon ssrf`) with `ssrf.depth_grants` (dns/internal/cloud/credential/protocol/execution or all) unlocking deep branches and `chain_next` ranking proven edges. Live execution remains browser/Burp-only; owned lab is the default without grants. Not an autonomous exploit runner. |
 | Burp MCP | Connected in OpenCode at loopback `127.0.0.1:9876/mcp`; 27 tools discovered, shared across tool-capable models. Native Claude Code entry awaits project approval. Not a recon-enforced executor. |
@@ -54,11 +63,13 @@ bugvault/
 ├── LICENSE                   MIT
 ├── requirements.txt          pyarrow, requests (playwright optional, in .venv)
 │
-├── .claude/skills/           ★ THE ONLY SKILLS FOLDER (18; hidden dot-folder):
-│                             8 recon phase guides + 10 hunting skills
+├── .claude/skills/           ★ THE ONLY SKILLS FOLDER (26; hidden dot-folder):
+│                             8 recon phase guides + 18 hunting skills
 │                             (hunt-auth-bypass, hunt-ato, hunt-mfa-bypass,
 │                             hunt-oauth, hunt-saml, hunt-ssrf, hunt-idor,
-│                             hunt-xss, hunt-sqli, hunt-csrf) — see §4 "Prompts & skills"
+│                             hunt-xss, hunt-sqli, hunt-csrf, hunt-ssti,
+│                             hunt-access-control, hunt-file-upload, hunt-js-bundle)
+│                             — see §4 "Prompts & skills"
 │
 ├── plans/                    ── THE FOUR DESIGN DOCUMENTS (platform not yet built)
 │   ├── plan1.md              terminal draft: model routing, executor/observer core
@@ -88,7 +99,7 @@ bugvault/
 ├── tools/burp/               optional stdio bridge + checksum-pinned JAR (binary gitignored)
 ├── tools/browser/            dedicated visible-profile launcher (state in .recon/browser/)
 │
-├── tests/                    363 tests, all offline or owned-loopback
+├── tests/                    offline or owned-loopback suite (current count below)
 │   ├── test_recon.py             core engine (scope, extract, pipeline, HAR, scoring)
 │   ├── test_recon_boundaries.py  scope/budget/header/egress enforcement
 │   ├── test_recon_ingest.py      offline scanner imports + catalog
@@ -103,6 +114,13 @@ bugvault/
 │   ├── test_recon_csrf.py        31 CSRF ledger tests: inventory, readiness, record rules, facet reopening, effort, CLI/report, import metadata privacy
 │   ├── test_recon_csrf_browser.py  owned two-origin Chromium lab (skips without Playwright)
 │   ├── test_recon_chain.py       12 chain-todolist tests: templates, proven/ready/failed lineage, custom-chain validation, offline CLI
+│   ├── test_recon_ssti.py        SSTI evidence, context migration, depth grants, severity and report gates
+│   ├── test_recon_ssti_lab.py    owned arithmetic-only loopback reflected/stored/export lab
+│   ├── test_recon_authz.py       offline authorization grants/context/evidence + owned-loopback controls
+│   ├── test_recon_authz_lab.py   owned-loopback HAR import, case surfaces and chain proof
+│   ├── test_recon_upload.py      Gate A: offline upload inventory, gates, facts, callbacks, budget/stops, cleanup
+│   ├── test_recon_upload_lab.py  Gate B: owned-loopback upload lifecycle, policy, async, resumable, layers
+│   ├── test_recon_js_ledger.py   offline JS build/stale/graph/packet/CLI/report/integrity regressions
 │   ├── test_recon_send.py        `recon send` executor + cross-process rate pacing
 │   ├── test_burp_config.py       shared MCP endpoint/permissions; no live Burp required
 │   ├── test_browser_profile.py   private profile/proxy policies; never opens a real browser
@@ -111,7 +129,7 @@ bugvault/
 │
 ├── vault/                    ── THE OBSIDIAN KNOWLEDGE BASE (open in Obsidian)
 │   ├── README.md             vault index
-│   ├── 35-Report-Studies/    85 dossier notes + _MOC.md (lessons per report)
+│   ├── 35-Report-Studies/    85 tracked + 4 untracked dossier notes; dirty _MOC.md
 │   ├── 10-Campaigns/         one folder per engagement (gitignored; holds scope.json)
 │   ├── 90-Meta/              source provenance for the imported indexes
 │   └── _data/                reports.csv (original 10,094), reports-merged.csv
@@ -158,7 +176,10 @@ analysis → output**.
 |---|---|
 | `score.py` | Investigation-priority heuristics (source/auth/version/param signals) + bug-class applicability. Not a testedness proof. |
 | `report.py` | Writes `recon.md`, `coverage.md`, `intel.md` (+ `findings.md`): inventory, context-specific parameter tables, comparison groups, provenance, policy-skipped work. `coverage.md` has a `skill` column naming the skill to load per row. |
-| `skillmap.py` | Skills folder location (`.claude/skills`) and coverage class → skill map: `ato` → `hunt-auth-bypass`, `hunt-ato`; `mfa-bypass` → `hunt-mfa-bypass`; `oauth` → `hunt-oauth`; `saml` → `hunt-saml`; `ssrf` → `hunt-ssrf`; `idor-bola` → `hunt-idor`; `xss`/`html-injection` → `hunt-xss`; `sqli`/`ssti` → `hunt-sqli`; `csrf` → `hunt-csrf`. |
+| `skillmap.py` | Skills folder location (`.claude/skills`) and coverage class → skill map: `ato` → `hunt-auth-bypass`, `hunt-ato`; `mfa-bypass` → `hunt-mfa-bypass`; `oauth` → `hunt-oauth`; `saml` → `hunt-saml`; `ssrf` → `hunt-ssrf`; `idor-bola` → `hunt-idor`; `xss`/`html-injection` → `hunt-xss`; `sqli` → `hunt-sqli`; `ssti` → `hunt-ssti`; `csrf` → `hunt-csrf`; `access-control`/`mass-assignment` → `hunt-access-control`; `file-upload` → `hunt-file-upload`. |
+| `ssti.py` | Offline arithmetic/control probe sets per role/tenant/workflow, independent render surfaces, raw capture classification, ordered submission receipts, evidence integrity checks and severity ceilings. `ssti.depth_grants` unlock offline `cred-read`/`token-use`/`lateral` evidence with hash-bound, redacted artifacts; the module never reads a credential, sends a request or moves laterally. Delimiter families are not engine fingerprints; no escape automation. |
+| `authz.py` | Offline access-control/mass-assignment path × method × account/role/tenant/workflow × case ledger, with fail-closed grants, budget declarations, hash-bound proof roles, root grouping and coarse conflicts. `fields.py diff` compares sent versus declared field names only; neither module sends traffic or validates a finding. |
+| `upload.py` | Offline file-upload lifecycle ledger: per-request sinks (URL × method × field × transport) and labelled contexts, 24 cases with fail-closed readiness (published-rules record, method, case grant, shared budget, stop state), artifact-backed stage facts, owner-log layer attribution, callback ladder, cleanup receipts/retention, host stops and inert text/PNG/flat-archive fixtures with a lint. Sends no traffic, generates no execution payloads or filter-evasion variants, promotes no finding. |
 | `csrf.py` / `csrfmeta.py` | CSRF action ledger: per-origin actions (fieldless, GET, GraphQL operations, realtime) × contexts × 15 case families with variants; facet-scoped reopening; record rules for browser-initiated attempts; hash-bound artifacts; `recon csrf sync/plan/record/status/verify`. `csrfmeta.py` derives value-free capture metadata for HAR/Burp imports. Offline only. |
 | `ssrf.py` | Offline 29-case SSRF matrix, exact URL/method/account/role/tenant/workflow/field ledger, hash-bound artifacts and normalized callback correlation. No HTTP/DNS/browser/cloud execution, native-fact import or automatic finding promotion. |
 | `findings.py` | Finding lifecycle: lead → confirmed (replay + distinct negative control required) → impact-proven → reported → outcome. Chain links (11 relations incl. lineage `spawns`/`derived-from`/`proves`) + automatic chain hints. Outcome log for future ranking. |
@@ -256,6 +277,13 @@ python3 -m recon plan demo                 # planning context; no model called
 python3 -m recon ssrf plan demo --asset-id 12 --context context.json   # offline case matrix
 python3 -m recon ssrf status demo --asset-id 12 --context context.json # latest outcomes/integrity
 python3 -m recon ssrf correlate demo --asset-id 12 --bundle bundle.json # normalized external evidence
+python3 -m recon authz sync demo           # offline authorization inventory
+python3 -m recon authz plan demo --target 12 # case/context readiness and grant gaps
+python3 -m recon upload sync demo          # offline upload sink/context inventory
+python3 -m recon upload plan demo --sink 3 # 24 lifecycle cases with readiness
+python3 -m recon upload fixture demo --kind text   # tiny inert marker file + control
+python3 -m recon upload status demo        # facts, budget, stops, pending cleanup
+python3 -m recon fields diff demo --module users # sent vs declared, not accepted
 python3 -m recon chain status demo              # cross-class todolist: ready/waiting/proven steps
 python3 -m recon chain add demo --file chain.json  # record a validated custom chain
 python3 -m recon finding add demo --title "..." --class idor-bola --url ...
@@ -263,7 +291,7 @@ python3 -m recon finding move demo 3 confirmed --replay r.txt --control c.txt
 python3 -m recon brief demo                # render hunter/validator/reporter briefs
 python3 -m recon status demo && python3 -m recon report demo
 
-# Tests (257; the .venv has playwright so the browser test runs too):
+# Tests (offline and owned-loopback; .venv includes optional Playwright browser tests):
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
@@ -421,3 +449,98 @@ to disable it; pre-change config/package files are backed up at
   it contains target data and possibly secrets.
 - Say "not implemented" when something isn't. This repo's credibility is the
   gap between what it claims and what it does — keep that gap at zero.
+
+## 2026-11-16 business-invariant/race implementation checkpoint
+
+`plan_buisneess_logic_race2.md` is a research plan, not permission to test a
+target. The checkout now has additive `recon/invariants.py` (pre-existing untracked
+model extended), `recon/logic.py` and `recon/race.py`, two new hunt skills, CLI
+verbs, candidate routing and a bounded report section. There are **24 skills**:
+8 phase guides and 16 hunting skills; the plan's 23/15/8 count is an older snapshot.
+Offline tests include a deterministic **owned-loopback** vulnerable/fixed/serial/
+replay one-use resource with independent readback and cleanup, a bounded four-
+writer group, and finite-step **in-process** synthetic commerce cases. See
+`tests/test_recon_invariant_gate_a.py`, `test_recon_business_race_gate_b.py`,
+`test_recon_business_race_gate_c.py`, and `test_recon_race_lab.py` for checked
+cases. [The gate matrix](docs/business-race-gate-matrix.md) names remaining
+partial checks; static Gate C fixtures are not a model evaluation.
+
+The model is an evidence worklist, not a product policy oracle. `inferred-observed`
+records anomaly leads but cannot adjudicate an invariant. Live readiness needs
+published-rule review, labelled owned test accounts, exact methods, budget and
+captured workflow; operator attestation records 2–8 single-send Burp/Turbo writers
+after an authorized human gate, not a target executor or a recon-enforced budget.
+An unknown response remains charged. **No connected browser control, program
+authorization, live pilot, M5b/M6 agent-driven synchronization or full Gate A/B
+acceptance was supplied or completed.** `pyarrow` is installed in `.venv` and a
+disposable temporary build selected 89 dossiers without overwriting the dirty
+`vault/` outputs; mapping and CSV-derived class counts are in `recon/README.md`.
+Do not claim any target race or business flaw from the owned fixture.
+
+## 2026-11-16 takeover implementation checkpoint
+
+The current count is **25 skills** (8 phase guides, 17 hunting skills); the earlier
+24-skill invariant checkpoint above is historical. `recon/takeover_dns.py` and
+`recon/takeover_trust.py` are pure offline parsers; `recon/takeover.py` stores
+source-qualified histories, dependency-bound candidate snapshots and operator
+claim/cleanup artifacts. CT collection retains supplied certificate dates, while
+graph sync reads existing assets/responses and never enqueues or resolves a new
+hostname. Source/current/archive distinctions remain visible, and ordinary address
+or SOA observations do not become address-pool takeover claims.
+
+Claims require precheck/claimability and exact candidate-host receipts with marker
+bytes in the response body, not request metadata. Live recording also checks class
+exclusions, declared shared budget, fresh DNS/provider data and negative wildcard
+controls; failed/overdue cleanup blocks further live success records. All of this
+is offline evidence gating, not traffic authorization or independent verification
+of artifact meaning. The in-memory provider simulation uses only owned synthetic
+accounts/resources and cannot prove a real provider, certificate or browser chain.
+
+The full suite passed **674 tests, 0 skipped** after review fixes; focused takeover,
+skill and chain tests passed **175 tests**. The synthetic DNS example validates
+while retaining collection gaps. Read [takeover acceptance](docs/takeover-acceptance.md)
+for the limited model-judgment results, invalid baseline caveat and outstanding live
+pilot/collector/provider/PSL/browser work. No target or cloud resource was contacted
+or claimed, and no changes were committed or pushed by this work.
+
+## 2026-11-16 cloud misconfiguration partial-implementation checkpoint
+
+The canonical plan at [plans/cloud-misconfiguration.md](plans/cloud-misconfiguration.md)
+now distinguishes installed offline components from the still-proposed R1–R8
+architecture. `recon/cloud_refs.py` extracts bounded, source-hashed S3/GCS/Blob,
+ARN, Azure resource ID, Cognito/RUM/Firebase leads without exporting signed URL
+query values or object paths. `recon/cloud.py` implements the **offline**
+`recon cloud import|generate|sync|plan|show|record|status|verify` ledger. `sync`
+pages stored in-scope response bodies with `--offset`/`next_offset`, records
+incomplete captures as such, and seeds cloud coverage when a matching JS/map or
+service asset exists. `generate` proposes only scope-checked program hostnames
+from supplied words, never resolves/queues/probes provider namespaces, and does
+not certify that its words are target-derived. `record` stores exact-reference
+operator events with labelled, hash-bound local artifacts; its live-channel
+labels, method checks and declared budget gate **evidence recording only**.
+`verify` rechecks source selectors, receipts and policy staleness. Neither label
+nor marker check evaluates provider IAM or creates a finding.
+
+The `hunt-cloud-misconfig` skill, coverage routing, catalog and conditional
+`recon.md` section are wired. Skill judgment cases are present but **unrun**.
+Final local verification on **Python 3.15.2**: `python3 -m unittest discover -s
+tests -q` ran **694 tests, 2 skipped, 0 failures**; focused cloud unit/owned-loopback
+suite ran **20 tests, all passed**. The owned-loopback fixture performed seven
+local HTTP attempts to exercise an owned write, readback, negative control and
+cleanup; it is not AWS/Azure/GCP behavior. The full suite emitted ResourceWarning
+messages for unclosed databases/HTTPError in other tests and two expected CLI
+error lines; it still passed. `git diff --check` on changed tracked cloud/docs
+paths was clean. A global `git diff --check` flags existing unrelated CRLF/CSV
+whitespace in `vault/_data/reports.csv`; those rows were left untouched.
+
+**Not landed:** account-B setup, connected dedicated browser, target/cloud
+authorization, provider-semantic review or pilot, credential-chain/pivot,
+provider namespace discovery, R7 effect envelope, shared cross-channel traffic
+accounting, cost/cleanup certification, Prowler adapter, typed cloud finding
+anchors and full Gate A/B/C acceptance. No external cloud account, bug-bounty
+target or provider API was contacted; no cloud issue is claimed. To resume a
+pilot, obtain the written program/provider-resource scope, disposable owned
+principals and canaries, exact operations/methods/channel, limits including
+cost and cleanup, a connected observer, and separate go/no-go approval. The
+working tree contains extensive prior unrelated uncommitted changes. No commit
+or push was made in this cloud work.

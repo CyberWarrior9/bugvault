@@ -9,7 +9,8 @@ import json
 from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import quote, urlsplit
 
-from .extract import is_static, path_ext, query_keys
+from .extract import extract_from_js, is_static, origin_of, path_ext, query_keys
+from .net import FetchError
 
 WAYBACK_LIMIT = 20000
 WAYBACK_JS_CAP = 50
@@ -40,10 +41,28 @@ def job_crtsh(ctx, asset: Dict[str, Any]) -> None:
                            kind="source-error", source="crtsh")
         return
     names = parse_crtsh(r.body)
+    # Preserve dated CT provenance when supplied. This is certificate history,
+    # not current DNS/ownership or an independently verified expiry finding.
+    certificates = {}
+    try:
+        records = json.loads(r.body)
+    except (ValueError, TypeError):
+        records = []
+    for record in (records if isinstance(records, list) else [])[:2000]:
+        if not isinstance(record, dict):
+            continue
+        for name in str(record.get("name_value", "")).splitlines()[:100]:
+            name = name.strip().lower().removeprefix("*.").rstrip(".")
+            if name not in names:
+                continue
+            dates = {key: str(record[key])[:40] for key in ("not_before", "not_after") if key in record}
+            if dates:
+                dates["response_ref"] = getattr(r, "request_id", None)
+                certificates.setdefault(name, []).append(dates)
     kept = 0
     for n in sorted(names):
         if ctx.scope.host_in(n):
-            ctx.add("host", n, source="crtsh")
+            ctx.add("host", n, source="crtsh", attrs={"ct_certificates": certificates.get(n, [])[:20]})
             kept += 1
         else:
             ctx.intel(n, f"certificate name related to {domain}, outside scope", "crtsh")
@@ -85,9 +104,37 @@ def job_wayback(ctx, asset: Dict[str, Any]) -> None:
         ext = path_ext(path)
         if ext in ("js", "mjs"):
             if js_added < WAYBACK_JS_CAP and ctx.scope.is_in(orig):
-                ctx.add("js", orig.split("?", 1)[0], source="wayback",
-                        attrs={"archived": True, "depth": 0})
+                aid = ctx.add("js", orig.split("?", 1)[0], source="wayback",
+                              attrs={"archived": True, "depth": 0})
                 js_added += 1
+                if ctx.campaign.raw.get("js", {}).get("archived_content", False) and (
+                        status == "200" and ts.isdigit() and len(ts) == 14):
+                    # Explicitly opted-in, budgeted passive third-party GET. This
+                    # never replays an archived operation against the target.
+                    archive_url = f"https://web.archive.org/web/{ts}id_/{orig}"
+                    try:
+                        capture = ctx.passive.get(archive_url, purpose="wayback-js",
+                                                  max_bytes=ctx.campaign.raw["js"].get(
+                                                      "max_bundle_bytes", ctx.policy.max_body_bytes))
+                    except FetchError:
+                        ctx.store.add_fact(aid, "archived JS content unavailable",
+                                           "observed", kind="collection-gap", source="wayback")
+                        continue
+                    if capture.status != 200 or capture.truncated or b"<html" in capture.body[:200].lower():
+                        ctx.store.add_fact(aid, "archived JS response absent or incomplete",
+                                           "observed", kind="collection-gap", source="wayback")
+                        continue
+                    f = extract_from_js(capture.text())
+                    ctx.store.update_attrs(aid, {"archive_snapshot": archive_url,
+                                                  "archive_request_id": capture.request_id,
+                                                  "archive_bytes": len(capture.body)})
+                    for literal in f.endpoints:
+                        target = literal.raw if literal.raw.startswith(("http://", "https://")) else (
+                            origin_of(orig) + literal.raw if literal.raw.startswith("/") else "")
+                        if target:
+                            ctx.add_endpoint(target, "archived", method=literal.method,
+                                             params=literal.params,
+                                             extra={"archived": True, "archive_last": ts})
             continue
         if ext == "map":
             if ctx.scope.is_in(orig):

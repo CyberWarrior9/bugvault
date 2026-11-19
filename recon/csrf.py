@@ -681,8 +681,9 @@ class CsrfLedger:
             return
         enctypes = [mime_of(t) or "application/x-www-form-urlencoded"
                     for t in op_attrs.get("form_enctypes") or []]
-        types = sorted(set(enctypes + [mime_of(t) for t in op_attrs.get("spec_content_types") or []]
-                           + declared_types)) or [""]
+        preferred = enctypes + [mime_of(t) for t in op_attrs.get("spec_content_types") or []] + declared_types
+        static = [mime_of(t) for t in op_attrs.get("static_content_types") or []]
+        types = sorted(set(preferred or static)) or [""]
         spec_auth = sorted(set(op_attrs.get("spec_auth") or []))
         auth = (spec_auth[0] if len(spec_auth) == 1 and spec_auth[0] in AMBIENT_AUTH + ("header",)
                 else "cookie+header" if spec_auth == ["cookie", "header"] else "unknown")
@@ -693,7 +694,8 @@ class CsrfLedger:
                       "header_flags": [], "explicit_auth_headers": [], "csrf_cookie_names": [],
                       "session_cookie_names": [], "origins_seen": [], "referer_sent": False,
                       "sec_fetch_site": [], "shape": names[:200], "observation_ids": [],
-                      "metadata_basis": ["declared"]}
+                       "metadata_basis": ["declared" if preferred else
+                                          "static-reference" if static else "declared"]}
             self._upsert_context(action_id, (content_type, auth, "", "", "", ""), "declared",
                                  detail, self._facets(detail, host_cookies), stats)
 
@@ -872,8 +874,9 @@ class CsrfLedger:
                                   "auth": context["auth"], "account": context["account"],
                                   "role": context["role"], "tenant": context["tenant"],
                                   "workflow": context["workflow"], "facets": facets,
-                                  "token_channels": detail["token_channels"],
-                                  "header_flags": detail["header_flags"],
+                                   "token_channels": detail["token_channels"],
+                                   "header_flags": detail["header_flags"],
+                                   "metadata_basis": detail["metadata_basis"],
                                   "origins_seen": detail["origins_seen"],
                                   "cookies": [{k: c.get(k) for k in ("name", "samesite", "domain",
                                                                      "secure", "httponly")}

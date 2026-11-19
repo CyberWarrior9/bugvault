@@ -16,6 +16,9 @@
   plan <campaign> --proposal F [--apply]    validate external intents; optionally enqueue only
   responses <campaign> [--limit N]        list stored HTTP response IDs (offline)
   fact check|verify|list <campaign> ...    deterministic response-backed predicates
+  cloud import|generate|sync|plan|show|record|status|verify <campaign> ...
+                                              offline cloud leads, scoped hostname proposals
+                                              and operator receipts; no provider executor
   ssrf plan|record|status|correlate <campaign> --asset-id ID ...   offline workflow/evidence
   fields sync|show|record|canary|trace|matrix|na|claim|fingerprint|packet|payload|blind <campaign>
                                               field ledger, canary map, trigger-matrix gate,
@@ -25,6 +28,13 @@
   import-openapi <campaign> <spec.json>       OpenAPI 3 / Swagger 2 declared fields (offline)
   chain status|add|realism <campaign> [--file F]  cross-class todolist/lineage + realism gate
   csrf sync|plan|record|status|verify <campaign>  CSRF action x context x case ledger (offline)
+  ssti probes|surface|trace|fingerprint|plan|record|status|verify <campaign>  offline SSTI evidence
+  authz sync|plan|record|status|verify <campaign>  offline access-control/MA workflow
+   upload sync|declare|plan|fixture|record|callback|cleanup|resume|status|verify <campaign>
+                                              offline file-upload lifecycle ledger; inert fixtures only
+   logic sync|declare|probe|observe|close|plan|record|cleanup|resume|status|verify <campaign>
+   race sync|declare|profile|plan|attest|record|status|verify <campaign>
+                                              offline invariant/race evidence; no gate sender
   send <campaign> <url> [--method M] [--header 'K: V'] [--json J | --form k=v | --data D]
                                              one request through the scoped client; prints request_id
 
@@ -100,9 +110,11 @@ def cmd_har(a) -> int:
     from .report import write_reports
     ctx = _load(a.campaign)
     try:
-        stats = import_har(ctx, Path(a.har), a.account, a.role, a.tenant, a.workflow_state)
+        stats = import_har(ctx, Path(a.har), a.account, a.role, a.tenant, a.workflow_state,
+                           a.script_bodies)
         print(f"import: {stats}")
-        print("queued JS from the HAR is parsed on the next `run` (mode permitting)")
+        print("HAR script/map URLs are inventory only; --script-bodies parses captured bodies "
+              "offline with `recon js sync` (no unauthenticated refetch)")
         ctx.refresh_coverage()
         for p in write_reports(ctx):
             print(f"wrote {p}")
@@ -124,6 +136,11 @@ def cmd_cov(a) -> int:
     from .report import write_reports
     ctx = _load(a.campaign)
     ctx.store.get_asset(a.asset_id)
+    if a.bug_class == "js-bundle" and a.status in ("tested", "confirmed", "refuted", "n-a"):
+        from .jsledger import JsLedger
+        state = JsLedger(ctx).status(origin=ctx.store.get_asset(a.asset_id)["value"])
+        if not state["complete"]:
+            raise ValueError("JS inventory has open stages/leads; a coarse cov row cannot close it")
     ctx.store.set_coverage(a.asset_id, a.bug_class, a.status, a.note)
     write_reports(ctx)
     print(f"coverage[{a.asset_id}, {a.bug_class}] = {a.status}")
@@ -135,11 +152,47 @@ def cmd_status(a) -> int:
     jobs = ctx.store.jobs()
     print(f"mode={ctx.policy.mode} requests_sent={ctx.store.request_count()}")
     print(f"campaign_http_attempts={ctx.store.network_attempts()}/{ctx.policy.max_campaign_requests}")
-    print(f"llm_agents=0 scheduler=1 handlers=8 imports={len(ctx.store.imports())} "
+    from .pipeline import JOB_NEEDS
+    print(f"llm_agents=0 scheduler=1 handlers={len(JOB_NEEDS)} imports={len(ctx.store.imports())} "
           f"endpoint_operations={len(ctx.store.operations())}")
     for (kind, state), n in sorted(Counter((j["kind"], j["state"]) for j in jobs).items()):
         print(f"  {kind:10} {state:8} {n}")
     return 0
+
+
+def cmd_js(a) -> int:
+    from .jsledger import JsLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = JsLedger(ctx)
+        if a.action == "sync":
+            result = ledger.sync(a.origin)
+        elif a.action == "verify":
+            result = ledger.verify()
+        elif a.action == "builds":
+            result = ledger.builds(a.origin)
+        elif a.action == "plan":
+            result = ledger.plan(a.family or "", a.lane, a.top, a.packets, a.origin)
+        elif a.action == "show":
+            result = ledger.show(a.lead)
+        elif a.action == "diff":
+            result = ledger.diff(a.origin, a.from_build or "", a.to_build or "")
+        elif a.action == "record":
+            result = ledger.record(a.lead, state=a.state or "", ref=a.ref or "",
+                                   reason=a.reason or "", rung=a.rung or "",
+                                   outcome=a.outcome or "", response_id=a.response)
+        elif a.action == "pair":
+            result = ledger.asset_pair(a.low_response, a.owner_response)
+        elif a.action == "resume":
+            result = ledger.resume_retained(a.origin, a.reason)
+        elif a.action == "export":
+            result = ledger.export(a.kind, Path(a.out))
+        else:
+            result = ledger.status(a.limit, a.origin)
+        print(json.dumps(result, indent=2))
+        return 2 if a.action == "verify" and not result["ok"] else 0
+    finally:
+        ctx.store.close()
 
 
 def cmd_catalog(a) -> int:
@@ -147,6 +200,57 @@ def cmd_catalog(a) -> int:
     data = catalog()
     print(json.dumps(data, indent=2) if a.json else render_catalog(data))
     return 0
+
+
+def cmd_takeover(a) -> int:
+    from .takeover import TakeoverLedger, read_json
+    ctx = _load(a.campaign)
+    try:
+        ledger = TakeoverLedger(ctx)
+        if a.action == "import":
+            result = ledger.import_capture(read_json(a.file))
+        elif a.action == "sync":
+            result = ledger.sync()
+        elif a.action == "show":
+            result = ledger.show(a.candidate)
+        elif a.action in ("record", "cleanup"):
+            result = getattr(ledger, a.action)(read_json(a.file))
+        elif a.action == "verify":
+            result = ledger.verify()
+        else:
+            result = getattr(ledger, a.action)(a.limit)
+        print(json.dumps(result, indent=2))
+        return 2 if a.action == "verify" and not result["ok"] else 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_cloud(a) -> int:
+    """Cloud candidates and operator evidence; no target or provider execution."""
+    from .cloud import CloudLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = CloudLedger(ctx)
+        if a.action == "import":
+            result = ledger.import_text(a.file, a.media_type, a.historical)
+        elif a.action == "generate":
+            result = ledger.generate_file(a.file)
+        elif a.action == "sync":
+            result = ledger.sync(a.limit, a.offset)
+        elif a.action == "plan":
+            result = ledger.plan(a.limit)
+        elif a.action == "show":
+            result = ledger.show(a.reference)
+        elif a.action == "record":
+            result = ledger.record_file(a.file)
+        elif a.action == "verify":
+            result = ledger.verify()
+        else:
+            result = ledger.status(a.limit)
+        print(json.dumps(result, indent=2))
+        return 2 if a.action == "verify" and not result["ok"] else 0
+    finally:
+        ctx.store.close()
 
 
 def cmd_import(a) -> int:
@@ -186,8 +290,16 @@ def cmd_finding(a) -> int:
     try:
         fx = Findings(ctx)
         if a.action == "add":
+            lineage = a.lineage or ""
+            if lineage:
+                from .jsledger import JsLedger
+                JsLedger(ctx)  # also creates module-owned tables in older campaigns
+                if not lineage.startswith("js:") or not ctx.store.db.execute(
+                        "SELECT 1 FROM js_leads WHERE lead_key=?", (lineage,)).fetchone():
+                    raise ValueError("--lineage needs a known js:<lead-key>; no inferred chain")
             fid, created = fx.add(a.title, a.bug_class, asset_id=a.asset, url=a.url,
-                                  severity=a.severity, tech=a.tech or [], note=a.note)
+                                   severity=a.severity, tech=a.tech or [], note=a.note,
+                                   detail={"lineage": [lineage]} if lineage else None)
             print(f"{'created' if created else 'exists'} finding #{fid} [lead]")
         elif a.action == "move":
             f = fx.move(a.id, a.stage, note=a.note, severity=a.severity,
@@ -332,6 +444,8 @@ def cmd_fields(a) -> int:
             result = ledger.trace(a.marker)
         elif a.action == "matrix":
             result = ledger.matrix(a.module)
+        elif a.action == "diff":
+            result = ledger.diff(a.module)
         elif a.action == "na":
             result = ledger.set_na(a.module, a.trigger, a.reason)
         elif a.action == "claim":
@@ -347,6 +461,110 @@ def cmd_fields(a) -> int:
             result = ledger.blind(a.asset_id, bundle)
         print(json.dumps(result, indent=2))
         return 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_authz(a) -> int:
+    from .authz import AuthzLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = AuthzLedger(ctx)
+        if a.action == "sync":
+            result = ledger.sync()
+        elif a.action == "plan":
+            result = ledger.plan(a.target, a.limit)
+        elif a.action == "record":
+            result = ledger.record(a.context, a.case, a.state, variant=a.variant,
+                                   grant=a.grant, parent_id=a.parent, impact=a.impact,
+                                   marker=a.marker, proof_basis=a.proof_basis,
+                                   artifacts=a.artifact, tool_refs=a.tool_ref,
+                                   requests=a.requests, owner=a.owner, root_key=a.root_key,
+                                   related_cases=a.related_case, note=a.note)
+        elif a.action == "verify":
+            result = ledger.verify()
+        else:
+            result = ledger.status(a.limit)
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("verified", result.get("integrity", {}).get("verified", True)) else 2
+    finally:
+        ctx.store.close()
+
+
+def cmd_invariant_view(a) -> int:
+    from .logic import LogicLedger
+    from .race import RaceLedger
+    from .invariants import read_json_file
+    ctx = _load(a.campaign)
+    try:
+        ledger = LogicLedger(ctx) if a.cmd == "logic" else RaceLedger(ctx)
+        if a.action == "sync":
+            result = ledger.sync()
+        elif a.action == "declare":
+            result = ledger.declare(read_json_file(a.file))
+        elif a.action in ("record", "observe", "attest"):
+            result = getattr(ledger, a.action)(read_json_file(a.file))
+        elif a.action == "probe":
+            result = ledger.probe(a.workflow, a.limit)
+        elif a.action == "plan":
+            result = ledger.plan(**({"workflow": a.workflow, "limit": a.limit} if a.cmd == "logic" else
+                                    {"context": a.context, "case": a.case, "limit": a.limit}))
+        elif a.action == "profile":
+            result = ledger.profile(a.host)
+        elif a.action == "close":
+            result = ledger.close(a.observation, a.reason, a.event)
+        elif a.action == "cleanup":
+            result = ledger.model.cleanup(a.event, a.outcome, a.artifact, a.note)
+        elif a.action == "resume":
+            result = ledger.model.resume(a.host, a.note)
+        elif a.action == "verify":
+            result = ledger.verify()
+        else:
+            result = ledger.status(a.limit)
+        print(json.dumps(result, indent=2, default=str))
+        return 2 if a.action == "verify" and not result["verified"] else 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_upload(a) -> int:
+    from .upload import UploadLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = UploadLedger(ctx)
+        if a.action == "sync":
+            result = ledger.sync()
+        elif a.action == "declare":
+            result = ledger.declare(a.url, a.method, a.field, a.transport, a.surface, a.note)
+        elif a.action == "plan":
+            result = ledger.plan(a.sink, a.limit)
+        elif a.action == "fixture":
+            result = ledger.fixture(a.kind, a.size)
+        elif a.action == "record":
+            result = ledger.record(
+                a.context, a.case, a.state, channel=a.channel, grant=a.grant, marker=a.marker,
+                control_marker=a.control_marker, facts=a.fact or [], artifacts=a.artifact or [],
+                layer=a.layer, request_ref=a.request_ref, response_status=a.response_status,
+                route=a.route, stop_trigger=a.stop_trigger,
+                served_headers=json.loads(a.served_headers) if a.served_headers else None,
+                requests=a.requests, bytes_sent=a.bytes, objects=a.objects,
+                object_ref=a.object_ref, tool_refs=a.tool_ref or [], root_key=a.root_key,
+                note=a.note)
+        elif a.action == "callback":
+            result = ledger.callback(a.event, a.kind, a.url, sent_at=a.sent_at,
+                                     observed_at=a.observed_at, deadline=a.deadline,
+                                     control_marker=a.control_marker, health=a.health,
+                                     job_id=a.job_id, artifacts=a.artifact or [], note=a.note)
+        elif a.action == "cleanup":
+            result = ledger.cleanup(a.event, a.outcome, a.artifact, a.note)
+        elif a.action == "resume":
+            result = ledger.resume(a.host, a.note)
+        elif a.action == "verify":
+            result = ledger.verify()
+        else:
+            result = ledger.status(a.limit)
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("verified", result.get("integrity", {}).get("verified", True)) else 2
     finally:
         ctx.store.close()
 
@@ -375,6 +593,40 @@ def cmd_csrf(a) -> int:
             result = ledger.status(host=a.host)
         print(json.dumps(result, indent=2))
         return 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_ssti(a) -> int:
+    from .ssti import SstiLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = SstiLedger(ctx)
+        if a.action == "probes":
+            if a.set_id is None and (a.asset_id is None or a.field is None):
+                raise ValueError("probes requires --set or --asset-id and --field")
+            result = (ledger.probes(a.set_id) if a.set_id is not None else
+                      ledger.start(a.asset_id, a.field, a.method, a.location, a.account, a.compact,
+                                   a.role, a.tenant, a.workflow))
+        elif a.action == "surface":
+            result = ledger.add_surface(a.set_id, a.kind, a.label)
+        elif a.action == "trace":
+            result = ledger.trace(a.surface_id, a.probe, response_id=a.response,
+                                  artifact=a.artifact)
+        elif a.action == "record":
+            result = ledger.record(a.surface_id, a.case, a.state, a.note, a.severity,
+                                   grant=a.grant, target=a.target, exercise=a.exercise,
+                                   attempts=a.attempts, artifacts=a.artifact)
+        elif a.action == "fingerprint":
+            result = ledger.fingerprint(a.set_id)
+        elif a.action == "plan":
+            result = ledger.plan(a.set_id)
+        elif a.action == "status":
+            result = ledger.status(a.set_id)
+        else:
+            result = ledger.verify()
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("verified", result.get("integrity", {}).get("verified", True)) else 2
     finally:
         ctx.store.close()
 
@@ -536,6 +788,71 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python3 -m recon", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("cloud", help="offline cloud references/triage/evidence; no provider traffic")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("import", "generate", "sync", "plan", "show", "record", "status", "verify"):
+        command = actions.add_parser(action)
+        command.add_argument("campaign")
+        if action in ("import", "generate", "record"):
+            command.add_argument("--file", required=True, help="campaign-relative artifact path")
+        if action == "import":
+            command.add_argument("--media-type", default="text/plain")
+            command.add_argument("--historical", action="store_true")
+        if action == "show":
+            command.add_argument("--reference", type=int, required=True)
+        if action in ("sync", "plan", "status"):
+            command.add_argument("--limit", type=int, default=25 if action != "sync" else 200)
+        if action == "sync":
+            command.add_argument("--offset", type=int, default=0, help="next_offset from prior sync page")
+        command.set_defaults(fn=cmd_cloud)
+    s = sub.add_parser("takeover", help="offline DNS/host/trust/claim evidence; never claims resources")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("import", "sync", "plan", "show", "record", "cleanup", "status", "verify"):
+        command = actions.add_parser(action)
+        command.add_argument("campaign")
+        if action == "import":
+            command.add_argument("file", help="normalized schema-1 DNS capture")
+        if action in ("record", "cleanup"):
+            command.add_argument("--file", required=True)
+        if action == "show":
+            command.add_argument("--candidate", type=int, required=True)
+        if action in ("plan", "status"):
+            command.add_argument("--limit", type=int, default=25)
+        command.set_defaults(fn=cmd_takeover)
+    for view, actions_list in (("logic", ("sync", "declare", "probe", "observe", "close", "plan",
+                                         "record", "cleanup", "resume", "status", "verify")),
+                               ("race", ("sync", "declare", "profile", "plan", "attest",
+                                         "record", "status", "verify"))):
+        ledger_parser = sub.add_parser(view, help="offline workflow invariant evidence (no target sends)")
+        ledger_actions = ledger_parser.add_subparsers(dest="action", required=True)
+        for action in actions_list:
+            command = ledger_actions.add_parser(action)
+            command.add_argument("campaign")
+            if action in ("declare", "observe", "attest", "record"):
+                command.add_argument("--file", required=True, help="bounded campaign evidence JSON")
+            if action == "probe":
+                command.add_argument("--workflow", required=True)
+            if action == "plan" and view == "logic":
+                command.add_argument("--workflow")
+            if action == "plan" and view == "race":
+                command.add_argument("--context", type=int)
+                command.add_argument("--case")
+            if action in ("plan", "probe", "status"):
+                command.add_argument("--limit", type=int, default=25)
+            if action == "profile" or action == "resume":
+                command.add_argument("--host", required=True)
+            if action == "close":
+                command.add_argument("--observation", required=True, type=int)
+                command.add_argument("--reason", required=True)
+                command.add_argument("--event", type=int)
+            if action == "cleanup":
+                command.add_argument("--event", required=True, type=int)
+                command.add_argument("--outcome", required=True)
+                command.add_argument("--artifact", default="")
+                command.add_argument("--note", default="")
+            if action == "resume":
+                command.add_argument("--note", required=True)
+            command.set_defaults(fn=cmd_invariant_view)
     s = sub.add_parser("catalog", help="phases, tools, integrations and actual agent/guide counts")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_catalog)
@@ -570,6 +887,8 @@ def main(argv=None) -> int:
     s.add_argument("--role", default="")
     s.add_argument("--tenant", default="")
     s.add_argument("--workflow-state", default="")
+    s.add_argument("--script-bodies", action="store_true",
+                   help="opt in to private script/map response bodies only; no request bodies")
     s.set_defaults(fn=cmd_har)
     s = sub.add_parser("report")
     s.add_argument("campaign")
@@ -584,6 +903,52 @@ def main(argv=None) -> int:
     s = sub.add_parser("status")
     s.add_argument("campaign")
     s.set_defaults(fn=cmd_status)
+    s = sub.add_parser("js", help="offline JS build/asset/lead ledger; no probes or finding promotion")
+    js_actions = s.add_subparsers(dest="action", required=True)
+    for action in ("sync", "status", "builds", "verify"):
+        f = js_actions.add_parser(action)
+        f.add_argument("campaign")
+        if action != "verify":
+            f.add_argument("--origin", help="exact origin; no scope expansion")
+        if action == "status":
+            f.add_argument("--limit", type=int, default=30)
+    f = js_actions.add_parser("plan", help="ranked JS leads and value-free test packets")
+    f.add_argument("campaign")
+    f.add_argument("--origin")
+    f.add_argument("--family")
+    f.add_argument("--lane", choices=("current", "stale", "all"), default="all")
+    f.add_argument("--top", type=int, default=30)
+    f.add_argument("--packets", action="store_true")
+    f = js_actions.add_parser("show", help="one lead, sightings, packet, rung receipts")
+    f.add_argument("campaign")
+    f.add_argument("lead")
+    f = js_actions.add_parser("diff", help="compare two explicitly identified builds")
+    f.add_argument("campaign")
+    f.add_argument("--origin", required=True)
+    f.add_argument("--from", dest="from_build")
+    f.add_argument("--to", dest="to_build")
+    f = js_actions.add_parser("record", help="offline handoff or individual rung observation")
+    f.add_argument("campaign")
+    f.add_argument("lead")
+    f.add_argument("--state")
+    f.add_argument("--ref")
+    f.add_argument("--reason")
+    f.add_argument("--rung")
+    f.add_argument("--outcome")
+    f.add_argument("--response", type=int, help="stored request ID for a status-backed rung")
+    f = js_actions.add_parser("pair", help="paired J17 asset-delivery observation, not a finding")
+    f.add_argument("campaign")
+    f.add_argument("--low-response", type=int, required=True)
+    f.add_argument("--owner-response", type=int, required=True)
+    f = js_actions.add_parser("resume", help="record review after a retained-asset 429/5xx stop; no HTTP")
+    f.add_argument("campaign")
+    f.add_argument("--origin", required=True)
+    f.add_argument("--reason", required=True)
+    f = js_actions.add_parser("export", help="sanitized offline summary")
+    f.add_argument("campaign")
+    f.add_argument("--kind", required=True)
+    f.add_argument("--out", required=True)
+    s.set_defaults(fn=cmd_js)
     s = sub.add_parser("lookup", help="fingerprinted versions -> searchsploit/Sploitus/KEV leads")
     s.add_argument("campaign")
     s.add_argument("--kev-file", help="offline KEV JSON instead of the cached/fetched feed")
@@ -603,6 +968,7 @@ def main(argv=None) -> int:
     f.add_argument("--asset", type=int)
     f.add_argument("--severity", choices=SEVERITIES)
     f.add_argument("--tech", action="append")
+    f.add_argument("--lineage", help="known js:<lead-key>; references a lead, never confirms a chain")
     f.add_argument("--note")
     f = fsub.add_parser("move")
     f.add_argument("campaign")
@@ -734,6 +1100,9 @@ def main(argv=None) -> int:
     f = actions.add_parser("matrix")
     f.add_argument("campaign")
     f.add_argument("--module", required=True)
+    f = actions.add_parser("diff", help="value-free, context-safe sent versus declared names")
+    f.add_argument("campaign")
+    f.add_argument("--module", required=True)
     f = actions.add_parser("na", help="record an n-a trigger cell with a reason")
     f.add_argument("campaign")
     f.add_argument("--module", required=True)
@@ -839,6 +1208,169 @@ def main(argv=None) -> int:
     f = actions.add_parser("verify", help="re-hash every recorded artifact")
     f.add_argument("campaign")
     s.set_defaults(fn=cmd_csrf)
+    s = sub.add_parser("authz", help="offline access-control and mass-assignment ledger; no traffic")
+    actions = s.add_subparsers(dest="action", required=True)
+    from .authz import CASES as AUTHZ_CASES, CHAIN as AUTHZ_CHAIN, STATES as AUTHZ_STATES, IMPACTS
+    f = actions.add_parser("sync")
+    f.add_argument("campaign")
+    f = actions.add_parser("plan")
+    f.add_argument("campaign")
+    f.add_argument("--target", type=int)
+    f.add_argument("--limit", type=int, default=25)
+    f = actions.add_parser("record")
+    f.add_argument("campaign")
+    f.add_argument("--context", type=int, required=True)
+    f.add_argument("--case", choices=(*AUTHZ_CASES, *AUTHZ_CHAIN), required=True)
+    f.add_argument("--state", choices=AUTHZ_STATES, required=True)
+    f.add_argument("--variant", default="default")
+    f.add_argument("--grant", default="")
+    f.add_argument("--parent", type=int)
+    f.add_argument("--impact", choices=IMPACTS, default="none")
+    f.add_argument("--marker", default="")
+    f.add_argument("--proof-basis", default="")
+    f.add_argument("--artifact", action="append", help="ROLE=campaign-relative path; baseline/test/control for proof")
+    f.add_argument("--tool-ref", action="append", help="native:ID or burp:external-reference")
+    f.add_argument("--requests", type=int, default=0, help="operator-declared external count, not traffic enforcement")
+    f.add_argument("--owner", default="")
+    f.add_argument("--root-key", default="", help="manual root-cause deduplication key")
+    f.add_argument("--related-case", action="append", help="related case ID; repeatable")
+    f.add_argument("--note", default="")
+    f = actions.add_parser("status")
+    f.add_argument("campaign")
+    f.add_argument("--limit", type=int, default=100)
+    f = actions.add_parser("verify")
+    f.add_argument("campaign")
+    s.set_defaults(fn=cmd_authz)
+    s = sub.add_parser("upload", help="offline file-upload lifecycle ledger and inert fixtures; no traffic")
+    actions = s.add_subparsers(dest="action", required=True)
+    from .upload import (CALLBACK_KINDS, CASES as UPLOAD_CASES, CHANNELS, CLEANUP_OUTCOMES,
+                         FIXTURE_KINDS, LAYERS, ROUTES, STATES as UPLOAD_STATES, STOP_KINDS,
+                         SURFACES, TRANSPORTS)
+    f = actions.add_parser("sync", help="reconcile captured/declared upload sinks and contexts")
+    f.add_argument("campaign")
+    f = actions.add_parser("declare", help="record an in-scope upload operation seen in Burp or "
+                                           "source review (signed storage, URL import, resumable)")
+    f.add_argument("campaign")
+    f.add_argument("--url", required=True)
+    f.add_argument("--method", default="POST")
+    f.add_argument("--field", required=True, help="file field name, or a (placeholder) such as (body)")
+    f.add_argument("--transport", choices=TRANSPORTS, required=True)
+    f.add_argument("--surface", choices=SURFACES, default="")
+    f.add_argument("--note", required=True, help="where it was observed, e.g. a Burp history label")
+    f = actions.add_parser("plan", help="per-sink contexts with 24 lifecycle case cards")
+    f.add_argument("campaign")
+    f.add_argument("--sink", type=int)
+    f.add_argument("--limit", type=int, default=25)
+    f = actions.add_parser("fixture", help="write one tiny inert marker fixture plus a distinct control")
+    f.add_argument("campaign")
+    f.add_argument("--kind", choices=FIXTURE_KINDS, required=True)
+    f.add_argument("--size", type=int, help="text fixtures only; at most 4096 bytes")
+    f = actions.add_parser("record", help="append one case event with stage facts and hash-bound artifacts")
+    f.add_argument("campaign")
+    f.add_argument("--context", type=int, required=True)
+    f.add_argument("--case", choices=list(UPLOAD_CASES), required=True)
+    f.add_argument("--state", choices=UPLOAD_STATES, required=True)
+    f.add_argument("--channel", choices=CHANNELS, default="browser")
+    f.add_argument("--grant", default="")
+    f.add_argument("--marker", default="")
+    f.add_argument("--control-marker", default="")
+    f.add_argument("--fact", action="append", help="STAGE=yes|no for accepted, stored, reachable, "
+                                                   "processed, served, executed, effect")
+    f.add_argument("--artifact", action="append", help="ROLE=campaign-relative path; repeatable")
+    f.add_argument("--layer", choices=LAYERS, default="unconfirmed")
+    f.add_argument("--request-ref", default="", help="request ID that the layer log must contain")
+    f.add_argument("--response-status", type=int)
+    f.add_argument("--route", choices=ROUTES, default="")
+    f.add_argument("--stop-trigger", choices=STOP_KINDS, default="")
+    f.add_argument("--served-headers", help="JSON object of retrieval response headers")
+    f.add_argument("--requests", type=int, default=0, help="declared requests; native must cite IDs")
+    f.add_argument("--bytes", type=int, default=0, help="declared uploaded bytes")
+    f.add_argument("--objects", type=int, default=0, help="owned objects created; need cleanup")
+    f.add_argument("--object-ref", default="")
+    f.add_argument("--tool-ref", action="append", help="native:ID or burp:label")
+    f.add_argument("--root-key", default="")
+    f.add_argument("--note", default="")
+    f = actions.add_parser("callback", help="correlate receiver evidence with one attempt")
+    f.add_argument("campaign")
+    f.add_argument("--event", type=int, required=True)
+    f.add_argument("--kind", choices=CALLBACK_KINDS, required=True)
+    f.add_argument("--url", required=True, help="receiver URL, or receiver hostname for dns")
+    f.add_argument("--sent-at", required=True)
+    f.add_argument("--observed-at", required=True)
+    f.add_argument("--deadline", required=True)
+    f.add_argument("--control-marker", required=True)
+    f.add_argument("--health", choices=("ok", "failed"), default="ok")
+    f.add_argument("--job-id", default="")
+    f.add_argument("--artifact", action="append", help="receiver-health=, receiver-log=, worker-log=")
+    f.add_argument("--note", default="")
+    f = actions.add_parser("cleanup", help="record deletion/abort/expiry receipts for an attempt")
+    f.add_argument("campaign")
+    f.add_argument("--event", type=int, required=True)
+    f.add_argument("--outcome", choices=CLEANUP_OUTCOMES, required=True)
+    f.add_argument("--artifact", default="")
+    f.add_argument("--note", default="")
+    f = actions.add_parser("resume", help="clear a host stop after review")
+    f.add_argument("campaign")
+    f.add_argument("--host", required=True)
+    f.add_argument("--note", required=True)
+    f = actions.add_parser("status")
+    f.add_argument("campaign")
+    f.add_argument("--limit", type=int, default=100)
+    f = actions.add_parser("verify")
+    f.add_argument("campaign")
+    s.set_defaults(fn=cmd_upload)
+    s = sub.add_parser("ssti", help="offline SSTI arithmetic probes and raw-surface evidence; no execution")
+    actions = s.add_subparsers(dest="action", required=True)
+    from .ssti import (CASES as SSTI_CASES, DEPTH_GRANTS as SSTI_GRANTS,
+                       READ_ONLY_METHODS, STATES as SSTI_STATES, SURFACE_KINDS)
+    f = actions.add_parser("probes", help="create/reuse a field-context probe set, or show an existing set")
+    f.add_argument("campaign")
+    f.add_argument("--set", dest="set_id", type=int)
+    f.add_argument("--asset-id", type=int)
+    f.add_argument("--field")
+    f.add_argument("--method", default="")
+    f.add_argument("--location", default="unknown")
+    f.add_argument("--account", default="")
+    f.add_argument("--role", default="")
+    f.add_argument("--tenant", default="")
+    f.add_argument("--workflow", default="")
+    f.add_argument("--compact", action="store_true")
+    f = actions.add_parser("surface", help="declare a separate server-rendered or DOM surface")
+    f.add_argument("campaign")
+    f.add_argument("--set", dest="set_id", type=int, required=True)
+    f.add_argument("--kind", choices=SURFACE_KINDS, required=True)
+    f.add_argument("--label", required=True)
+    f = actions.add_parser("trace", help="classify one stored response or campaign-local artifact")
+    f.add_argument("campaign")
+    f.add_argument("--surface", dest="surface_id", type=int, required=True)
+    f.add_argument("--probe", required=True)
+    f.add_argument("--response", type=int)
+    f.add_argument("--artifact")
+    f = actions.add_parser("record", help="append evidence-gated detect/confirm/stored/severity event")
+    f.add_argument("campaign")
+    f.add_argument("--surface", dest="surface_id", type=int, required=True)
+    f.add_argument("--case", choices=SSTI_CASES, required=True)
+    f.add_argument("--state", choices=SSTI_STATES, required=True)
+    f.add_argument("--note", required=True)
+    f.add_argument("--severity", choices=("low", "medium", "high", "critical"),
+                   help="severity-gate only; evaluation alone is capped at medium")
+    f.add_argument("--grant", choices=SSTI_GRANTS,
+                   help="depth cases only; must match ssti.depth_grants")
+    f.add_argument("--target",
+                   help="depth cases only: listed data path, in-scope read-only URL, or callback host")
+    f.add_argument("--exercise", type=str.upper, choices=READ_ONLY_METHODS,
+                   help="token-use only: the single read-only method exercised")
+    f.add_argument("--attempts", type=int, default=0,
+                   help="depth cases only: declared attempts (0..1; observed needs 1)")
+    f.add_argument("--artifact", action="append", default=[],
+                   help="depth cases only: campaign-local evidence artifact (repeatable)")
+    for action in ("fingerprint", "plan", "status"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--set", dest="set_id", type=int, required=True)
+    f = actions.add_parser("verify", help="rehash every stored capture and artifact reference")
+    f.add_argument("campaign")
+    s.set_defaults(fn=cmd_ssti)
     s = sub.add_parser("import-burp", help="offline Burp XML/JSON export or raw request import; "
                                            "header/cookie names only, values never stored")
     s.add_argument("campaign")

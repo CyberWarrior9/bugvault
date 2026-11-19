@@ -114,13 +114,22 @@ provenance. Run `python3 -m recon catalog`; see [`recon/README.md`](recon/README
 for the skills, deduplication rules, actual agent counts (**zero LLM agents**) and
 remaining execution-isolation limits.
 
-**Skills:** all 18 BugVault skills are in one folder, `.claude/skills/` (8 recon phase
-guides + 10 hunting skills: the authentication set `hunt-auth-bypass`, `hunt-ato`,
+**Skills:** all 26 BugVault skills are in one folder, `.claude/skills/` (8 recon phase
+guides + 18 hunting skills: the authentication set `hunt-auth-bypass`, `hunt-ato`,
 `hunt-mfa-bypass`, `hunt-oauth`, `hunt-saml`, plus `hunt-ssrf`, `hunt-idor`, `hunt-xss`,
-`hunt-sqli` and `hunt-csrf`). OpenCode and Claude Code load it
+`hunt-sqli`, `hunt-csrf`, `hunt-ssti`, `hunt-access-control`, `hunt-file-upload`,
+`hunt-js-bundle`, `hunt-business-logic`, `hunt-race-conditions`, `hunt-takeover` and
+`hunt-cloud-misconfig`). OpenCode and Claude Code load it
 automatically in sessions inside this repository; `coverage.md` names the skill to use
 for each row. `python3 -m recon send` is the native scoped executor, but this operator's
 live tests must originate in the dedicated browser through Burp unless separately approved.
+
+**Cloud misconfiguration (partial):** `hunt-cloud-misconfig` and
+`python3 -m recon cloud import|generate|sync|plan|show|record|status|verify` support
+offline cloud references, scoped hostname proposals, ranking and operator evidence with integrity checks.
+No provider probes, credential use, owned cloud lab, Prowler adapter or real
+impact channel was added. The R1–R8 implementation status and open gates are
+in [`plans/cloud-misconfiguration.md`](plans/cloud-misconfiguration.md).
 
 **SSRF workflow:** [`hunt-ssrf`](.claude/skills/hunt-ssrf/SKILL.md) covers surface/trigger
 selection, controlled attribution/readback, parser/redirect/DNS comparisons, rendering,
@@ -133,6 +142,14 @@ grants, with every destination still scope-checked. The 29-case offline ledger
 artifacts and uncertainty, and ranks proven chain edges (`chain_next`). Owned lab
 remains the default where no grant exists. Both supplied references are pinned and
 quality-reviewed in the skill's `references/sources.md`.
+
+**Business invariants and race:** `python3 -m recon logic --help` and
+`python3 -m recon race --help` expose offline declarations, anomaly leads, exact
+case evidence and bounded operator-attested run imports over one model. They do
+not send requests, run synchronized gates or create findings. One deterministic
+owned-loopback vulnerable/fixed/serial/replay fixture is tested; the full
+18-scenario laboratory plan and an agent-driven protocol/budget broker are not
+complete. See [`recon/README.md`](recon/README.md) for exact limits and gates.
 
 **Shared Burp MCP:** `opencode.json` exposes the loopback service on port 9876 to
 every tool-capable model selected in this project; `.mcp.json` supplies native Claude
@@ -160,10 +177,15 @@ fallback contract, authorship audit): [`docs/model-routing.md`](docs/model-routi
 - [ ] `00-Engine/` doctrine + agent prompts
 - [ ] KB-expansion pipeline implementation (docs/kb-expansion-pipeline.md)
 - [x] Recon engine (`recon/`): scope-enforced, event-driven, freshness-ranked; ARTEX recon ideas ported (see recon/README.md)
-- [x] One skills folder (`.claude/skills/`): 8 recon guides + 10 hunting skills (SSRF, IDOR, XSS, SQLi, CSRF, 5 auth), tested
+- [x] One skills folder (`.claude/skills/`): 8 recon guides + 18 hunting skills (including partial cloud, takeover, business-logic, race-conditions and 5 auth), tested
 - [x] Injection program (field ledger + trigger-matrix completeness gate, canary propagation map, per-host WAF profiles, payload context packets with model attribution, blind-XSS correlation on shared callback primitives, html-injection/ssti classes + 4 chain templates, three-question realism gate on completed chains, Burp/OpenAPI import adapters)
-- [x] CSRF program (`hunt-csrf` + `recon csrf`): per-origin action × context × case ledger with fieldless/GET/GraphQL/realtime actions, 15 case families and 68 variants, facet-scoped reopening, value-free HAR/Burp/OpenAPI capture metadata, and an owned-loopback two-origin Chromium lab; 363 tests pass in `.venv` (system Python skips the two Playwright tests)
+- [x] CSRF program (`hunt-csrf` + `recon csrf`): per-origin action × context × case ledger with fieldless/GET/GraphQL/realtime actions, 15 case families and 68 variants, facet-scoped reopening, value-free HAR/Burp/OpenAPI capture metadata, and an owned-loopback two-origin Chromium lab
+- [x] SSTI detection subset (`hunt-ssti` + `recon ssti`): inert arithmetic/control probes per captured role/tenant/workflow context, independent raw render-surface evidence, ordered submission-receipt correlation, integrity checks, and offline grant-gated `cred-read`/`token-use`/`lateral` evidence with medium/high/critical ceilings; no native credential use, request execution, lateral movement or engine-level identification.
+- [x] Access-control and mass-assignment offline workflow (`hunt-access-control`, `recon authz`, `fields diff`): nine case families, DELETE candidate seeding, fail-closed grant labels, exact captured contexts, hash-bound evidence and owned-loopback validation. This is not a live tester or a confirmed-finding engine.
+- [x] File-upload lifecycle workflow (`hunt-file-upload` + `recon upload`): per-request sinks incl. signed storage, resumable and URL import; 24 lifecycle cases; artifact-backed accepted/stored/processed/served/executed/effect facts; owner-log layer attribution; callback ladder; one shared declared budget; stop rules and cleanup receipts; inert fixtures; Gate A offline and Gate B owned-loopback tests. No upload executor, payload or bypass-variant generator, and no live target was contacted.
+- [x] Partial offline business-invariant/race workflow (`recon logic`, `recon race`): typed owned invariants, anomaly leads, exact-writer scenarios, bounded attestation imports and one deterministic owned-loopback collision. No synchronized target sender, complete B02–B18 fixtures, Gate C evaluation or live pilot.
 - [ ] First campaign folder
+- [x] Offline takeover workflow (`hunt-takeover`, `recon takeover`): typed DNS/referral/wildcard capture import, stale-host history, conditional trust ranking, provider status freshness, claim dossier and cleanup evidence. Owned simulation only; no live DNS collector, automated claimer or demonstrated live chain. See `plans/subdomain-takeover.md` for acceptance limits.
 
 ## License
 

@@ -87,7 +87,22 @@ Evidence standard per class: XSS = proof the script executed in the browser
 (DOM/screenshot marker, not body reflection); SQLi = the replayed true/false
 pair plus negative control bound via `fact check`; blind XSS = the correlated
 surface capture validated by `recon fields blind` (marker in the executing
-surface, absent from the control).
+ surface, absent from the control).
+
+For `business-logic`/`race-conditions`, read `recon logic status/verify` and
+`recon race status/verify` **before** validating any finding. Reject inferred or
+unknown policy, source-only or lab-only effects as target claims, stale/invalid
+artifacts, missing owned-resource scope, a response without authoritative
+effect, or a shared-host-only chain. An observed window/constraint response
+with the defense holding is not a vulnerability. If the serial path also breaks,
+the primary cause is sequential or unresolved, not established race causality.
+The generic replay/control artifact gate alone does **not** certify the rule.
+Require an earned T2/T3 or lineage-gated T4, attacker-gain line, preconditions,
+blast radius, reproduction count, cleanup and proposed fix. For race require a
+numerator/denominator at stated parallelism plus the matched serial/fixed/replay
+contrast; no universal success-rate threshold. An operator-attested gate cannot
+by itself prove overlap. The M5b/M6 adapter and any target pilot need separate
+authorization/readiness; do not infer capability from a CLI import.
 
 ## Commands
 

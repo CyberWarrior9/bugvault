@@ -20,9 +20,11 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
 from .extract import (decode_inline_sourcemap, extract_from_js, is_static, looks_api, origin_of, parse_page,
-                      parse_robots, parse_sitemap, resolve, sourcemap_sources)
+                       parse_robots, parse_sitemap, resolve, sourcemap_sources, SECRET_PATTERNS)
 from .fingerprint import fingerprint, is_spa, takeover_match, takeover_providers_for_cname, WAF_CDN_TAGS
-from .net import FetchError
+from .jschunks import chunk_url, reconstruct
+from .jsgraph import importmap_urls, precache_urls, script_reference, worker_urls
+from .net import BudgetExceeded, FetchError
 
 MAX_LINKS = 300
 MAX_SITEMAPS = 4
@@ -58,26 +60,30 @@ def dig_cname(host: str) -> Optional[str]:
 
 
 def _takeover_chain_context(ctx, host: str) -> List[str]:
-    """Impact context for a takeover lead: does a stored cookie domain span this host?
+    """Conditional cookie-domain context; never infer a session or session theft.
 
-    Implements the doctrine's first escalation ladder rung mechanically: a takeover on
-    a host covered by `Domain=.parent` session cookies turns a parked lead into a
-    session-theft chain candidate. OAuth/CSP allowlist checks need response bodies and
-    remain hunter work.
+    Compare actual cookie domains instead of guessing the registrable domain from
+    two labels (which is wrong for e.g. example.co.uk). No cookie value is retained.
     """
-    parent = ".".join(host.split(".")[-2:]) if host.count(".") >= 1 else host
+    from .takeover_trust import cookie_context
     hits: List[str] = []
     for row in ctx.store.db.execute(
-            "SELECT url, resp_headers FROM requests WHERE status IS NOT NULL AND error IS NULL"):
+            "SELECT url, resp_headers FROM requests WHERE status IS NOT NULL AND error IS NULL "
+            "ORDER BY id DESC LIMIT 500"):
         try:
             headers = json.loads(row["resp_headers"] or "{}")
         except (TypeError, ValueError):
             continue
-        for value in [v for k, v in headers.items() if k.lower() == "set-cookie"]:
-            if f"domain=.{parent}" in value.lower():
-                note = f"session cookie domain spans *.{parent} (seen on {row['url']})"
-                if note not in hits:
-                    hits.append(note)
+        for context in cookie_context(row["url"], headers, host):
+            if context.get("host_only"):
+                continue
+            domain = context.get("domain", "")
+            if not domain:
+                continue
+            origin = origin_of(row["url"])
+            note = f"cookie domain spans *.{domain} (seen on {origin}; conditional, not session impact)"
+            if note not in hits:
+                hits.append(note)
     return hits[:5]
 
 
@@ -221,14 +227,30 @@ def job_wellknown(ctx, svc: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------- JS harvest
 
 def _process_js_text(ctx, text: str, base_url: str, page_origin: str, source: str,
-                     asset_id: int, depth: int) -> None:
+                     asset_id: int, depth: int, headers: Optional[Dict[str, str]] = None) -> None:
     f = extract_from_js(text)
+    graph = reconstruct(text, base_url, string_refs=f.chunks) if source != "sourcemap" else None
     svc_id = ctx.service_for(page_origin)
     for lit in f.endpoints:
         raw = lit.raw
+        if any(pattern.search(raw) for pattern in SECRET_PATTERNS.values()):
+            ctx.store.add_fact(asset_id, "token-like value embedded in JS operation URL; "
+                               "path withheld from endpoint inventory", "inferred",
+                               kind="collection-gap", source=source)
+            continue
         url = "https:" + raw if raw.startswith("//") else (
-            raw if raw.startswith("http") else page_origin + raw)
-        ctx.add_endpoint(url, source, method=lit.method, params=lit.params + _qkeys(raw))
+            raw if raw.startswith(("http", "ws")) else page_origin + raw)
+        mimes = {"json": "application/json", "graphql": "application/json",
+                 "form": "application/x-www-form-urlencoded", "multipart": "multipart/form-data"}
+        extra = {"static_content_types": [mimes[lit.transport]]} if lit.transport in mimes else {}
+        if lit.headers:
+            extra["js_header_names"] = lit.headers
+        if lit.base_unresolved:
+            extra["base_unresolved"] = True
+        ctx.add_endpoint(url, source, method=lit.method, params=lit.params + _qkeys(raw),
+                         extra=extra or None)
+    for host in f.host_refs:
+        ctx.intel(host, "bare hostname in client JS; no scheme or scope grant inferred", source)
     for route in f.routes:
         ctx.add("route", page_origin + route, source=source)
     svc_attrs: Dict[str, Any] = {}
@@ -238,6 +260,17 @@ def _process_js_text(ctx, text: str, base_url: str, page_origin: str, source: st
         svc_attrs["hash_routing"] = True
     if f.graphql_ops:
         svc_attrs["graphql_ops"] = f.graphql_ops
+    if f.graphql_documents:
+        ctx.store.update_attrs(asset_id, {"graphql_documents": f.graphql_documents})
+    if f.server_actions:
+        ctx.store.update_attrs(asset_id, {"server_actions": f.server_actions})
+        ctx.store.add_fact(asset_id, f"{len(f.server_actions)} Next.js server-action reference(s) "
+                           "in client code; execution and page association unverified",
+                           "inferred", kind="js-action-lead", evidence=base_url, source=source)
+    if f.persisted_hashes:
+        ctx.store.update_attrs(asset_id, {"graphql_persisted_hashes": f.persisted_hashes})
+    if f.client_flows:
+        ctx.store.update_attrs(asset_id, {"client_flows": f.client_flows})
     if f.routes:
         svc_attrs["spa"] = True
     if svc_attrs:
@@ -251,22 +284,57 @@ def _process_js_text(ctx, text: str, base_url: str, page_origin: str, source: st
                                   "browser keys (e.g. Maps) are usually never-submit.")
     if source == "sourcemap":
         return
+    for worker in worker_urls(text, base_url):
+        _add_js(ctx, worker, page_origin, depth + 1, source="service-worker")
+    if source == "service-worker":
+        precached, clipped = precache_urls(text, base_url)
+        ctx.store.update_attrs(asset_id, {"precache_urls": precached[:200]})
+        if clipped:
+            ctx.store.add_fact(asset_id, "service-worker precache parser cap reached; graph incomplete",
+                               "observed", kind="collection-gap", source="jsparse")
+        for target in precached:
+            _add_js(ctx, target, page_origin, depth + 1, source="precache")
+    if graph:
+        ctx.store.update_attrs(asset_id, {"chunk_map": [
+            {"id": c.chunk_id, "name": c.name, "hash": c.digest,
+             "url": c.url, "source": c.source} for c in graph.chunks[:MAX_JS_PER_ORIGIN]],
+            "composed_only": len(graph.composed_only), "federation_remotes": graph.remotes,
+            "reconstruction_gaps": graph.gaps})
+        for gap in graph.gaps:
+            ctx.store.add_fact(asset_id, gap, "observed", kind="collection-gap",
+                               evidence=base_url, source="jsparse")
+        for remote in graph.remotes:
+            if not ctx.scope.is_in(remote):
+                ctx.intel(origin_of(remote), "module federation remote outside scope", "jsparse")
+                ctx.store.add_fact(asset_id, "federation remote outside approved scope",
+                                   "observed", kind="collection-gap", evidence=base_url,
+                                   source="jsparse")
     if depth < MAX_JS_DEPTH:
-        for c in f.chunks:
-            # bundler-rooted names ("static/js/x.js") resolve from the site root,
-            # everything else relative to the script that referenced it
-            if c.startswith(("static/", "assets/", "_next/", "_nuxt/", "js/")):
-                curl = page_origin + "/" + c
+        refs = ([(c.url, c.source) for c in (graph.chunks if graph else [])] +
+                [(chunk_url(c, base_url), "chunk") for c in f.chunks] +
+                [(r, "federation-remote") for r in (graph.remotes if graph else [])])
+        # Sensitive named chunks first within the same cap; simple string chunks
+        # remain the fallback when a runtime shape is not recognized.
+        refs.sort(key=lambda row: (not any(s in row[0].lower() for s in
+                                             ("admin", "internal", "secret", "auth")), row[0]))
+        max_assets = ctx.campaign.raw.get("js", {}).get("max_js_per_origin", MAX_JS_PER_ORIGIN)
+        for curl, edge in dict.fromkeys(refs):
+            if ctx.store.find_asset("js", curl) or ctx.store.count_assets("js", origin_of(curl)) < max_assets:
+                _add_js(ctx, curl, page_origin, depth + 1, source=edge)
             else:
-                curl = resolve(base_url, c)
-            if ctx.store.count_assets("js", origin_of(curl)) < MAX_JS_PER_ORIGIN:
-                _add_js(ctx, curl, page_origin, depth + 1, source="chunk")
-    if f.sourcemap:
-        inline = decode_inline_sourcemap(f.sourcemap)
+                ctx.store.add_fact(asset_id, "JS per-origin asset cap reached; remaining chunks not fetched",
+                                   "observed", kind="collection-gap", source="jsparse")
+                break
+    header_ref = next((value for name in ("sourcemap", "x-sourcemap")
+                       for key, value in (headers or {}).items() if key.lower() == name and value), None)
+    map_ref = header_ref or f.sourcemap
+    if map_ref:
+        inline = decode_inline_sourcemap(map_ref)
         if inline is not None:
             _process_sourcemap(ctx, inline, base_url + "#inline-map", page_origin, asset_id)
         else:
-            ctx.add("sourcemap", resolve(base_url, f.sourcemap).split("?", 1)[0], source="js",
+            ctx.add("sourcemap", resolve(base_url, map_ref).split("?", 1)[0],
+                    source="map-header" if header_ref else "js",
                     attrs={"page_origin": page_origin})
     elif ctx.policy.allows("loud") and base_url.endswith(".js"):
         ctx.add("sourcemap", base_url + ".map", source="guess",
@@ -281,9 +349,28 @@ def _qkeys(raw: str) -> List[str]:
 
 
 def _add_js(ctx, url: str, page_origin: str, depth: int, source: str) -> None:
-    url = url.split("#", 1)[0].split("?", 1)[0]
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        ctx.store.add_fact(ctx.service_for(page_origin), "unparseable JS reference",
+                           "observed", kind="collection-gap", source=source)
+        return
+    if parsed.query or parsed.fragment or parsed.username or parsed.password:
+        ctx.store.add_fact(ctx.service_for(page_origin),
+                           "query-bearing JS reference not automatically fetched; exact URL needs review",
+                           "observed", kind="collection-gap", source=source)
+        return
+    if not script_reference(url) or any(p.search(url) for p in SECRET_PATTERNS.values()):
+        return
     if not ctx.scope.is_in(url):
         ctx.intel(origin_of(url), f"third-party script {urlsplit(url).path[:100]}", source)
+        return
+    cap = ctx.campaign.raw.get("js", {}).get("max_js_per_origin", MAX_JS_PER_ORIGIN)
+    if (not ctx.store.find_asset("js", url)
+            and ctx.store.count_assets("js", origin_of(url)) >= cap):
+        ctx.store.add_fact(ctx.service_for(page_origin),
+                           "JS per-origin asset cap reached; further references not collected",
+                           "observed", kind="collection-gap", source=source)
         return
     ctx.add("js", url, source=source, attrs={"page_origin": page_origin, "depth": depth})
 
@@ -336,6 +423,13 @@ def _harvest_page(ctx, svc, r, base) -> List[str]:
                                        "hash_routing": "#/" in html})
     for src in page.scripts:
         _add_js(ctx, resolve(base, src), origin, 0, source="html")
+    for mapping in page.import_maps[:10]:
+        urls, gaps = importmap_urls(mapping, base, page.inline_scripts)
+        for gap in gaps:
+            ctx.store.add_fact(svc["id"], gap, "observed", kind="collection-gap",
+                               source="importmap")
+        for target in urls:
+            _add_js(ctx, target, origin, 0, source="importmap")
     for i, code in enumerate(page.inline_scripts):
         if code.strip():
             _process_js_text(ctx, code, base, origin, "inline", svc["id"], 0)
@@ -371,21 +465,52 @@ def job_jsparse(ctx, js: Dict[str, Any]) -> None:
     url = js["value"]
     a = js["attrs"]
     page_origin = a.get("page_origin") or origin_of(url)
-    r = ctx.client.get(url, purpose="jsparse")
+    r = ctx.client.get(url, purpose="jsparse", max_bytes=ctx.campaign.raw.get(
+        "js", {}).get("max_bundle_bytes", ctx.policy.max_body_bytes))
     if r.status != 200:
         ctx.store.update_attrs(js["id"], {"status": r.status})
         return
     ctx.store.update_attrs(js["id"], {"status": 200, "bytes": len(r.body),
-                                      "truncated": r.truncated})
-    _process_js_text(ctx, r.text(), url, page_origin, "js", js["id"], int(a.get("depth", 0)))
+                                       "truncated": r.truncated})
+    if r.truncated:
+        ctx.store.add_fact(js["id"], "JS response truncated by body cap; extraction is incomplete",
+                           "observed", kind="collection-gap", source="jsparse")
+    _process_js_text(ctx, r.text(), url, page_origin,
+                     "service-worker" if "service-worker" in a.get("sources", []) else "js",
+                     js["id"], int(a.get("depth", 0)),
+                      r.headers)
+
+
+def job_jsretained(ctx, asset: Dict[str, Any]) -> None:
+    """Recheck one *previously captured* retired asset. No guessed URLs or auth."""
+    url = asset["value"]
+    from .jsledger import JsLedger
+    cap = ctx.campaign.raw.get("js", {}).get("stale", {}).get("max_old_assets", 0)
+    allowed = {r["asset_id"] for r in JsLedger(ctx)._retained_candidates(origin_of(url))[:cap]}
+    service = ctx.store.get_asset(ctx.service_for(url))
+    if (not ctx.scope.is_in(url) or not cap or asset["id"] not in allowed or
+            service["attrs"].get("js_retained_stop")):
+        raise BudgetExceeded("retained JS asset disabled or outside approved scope")
+    r = ctx.client.get(url, purpose="jsretained", follow=False, max_bytes=ctx.campaign.raw.get(
+        "js", {}).get("max_bundle_bytes", ctx.policy.max_body_bytes))
+    ctx.store.update_attrs(asset["id"], {"retained_status": r.status})
+    if r.status == 429 or r.status >= 500:
+        ctx.store.update_attrs(service["id"], {"js_retained_stop": f"HTTP {r.status} on retained asset"})
+        raise BudgetExceeded("retained JS host stop: 429/5xx; review before resuming")
+    if r.truncated:
+        ctx.store.add_fact(asset["id"], "retained JS response truncated; no complete asset claim",
+                           "observed", kind="collection-gap", source="jsretained")
 
 
 def _process_sourcemap(ctx, sm: dict, url: str, page_origin: str, asset_id: int) -> None:
     files = sourcemap_sources(sm)
-    names = [n for n in (sm.get("sources") or []) if "node_modules/" not in n]
+    names = [n for n, _ in files]
+    if any(isinstance(s, dict) and "url" in s for s in (sm.get("sections") or [])):
+        ctx.store.add_fact(asset_id, "source map has external index sections; source tree incomplete",
+                           "observed", kind="collection-gap", evidence=url, source="mapparse")
     ctx.store.update_attrs(asset_id, {"original_sources": names[:200]})
-    ctx.store.add_fact(asset_id, f"source map exposes {len(names)} original files "
-                       f"({len(files)} with content)", "observed", kind="sourcemap",
+    ctx.store.add_fact(asset_id, f"source map exposes {len(names)} original files with content",
+                       "observed", kind="sourcemap",
                        evidence=url, source="mapparse",
                        detail="Lead, not a finding: report only with secrets or a hidden-"
                               "endpoint impact chain.")
@@ -400,14 +525,26 @@ def _process_sourcemap(ctx, sm: dict, url: str, page_origin: str, asset_id: int)
 def job_mapparse(ctx, sm: Dict[str, Any]) -> None:
     url = sm["value"]
     page_origin = sm["attrs"].get("page_origin") or origin_of(url)
-    r = ctx.client.get(url, purpose="mapparse", max_bytes=MAX_SOURCEMAP_BYTES)
+    r = ctx.client.get(url, purpose="mapparse", max_bytes=min(
+        ctx.campaign.raw.get("js", {}).get("max_map_bytes", ctx.policy.max_body_bytes),
+        MAX_SOURCEMAP_BYTES))
     if r.status != 200:
         ctx.store.update_attrs(sm["id"], {"status": r.status})
+        return
+    if r.truncated:
+        # The scoped client applies the policy body ceiling even when the requested
+        # map limit is larger. A clipped JSON document is a collection gap, not a
+        # malformed server response or proof of missing source files.
+        ctx.store.update_attrs(sm["id"], {"status": 200, "truncated": True,
+                                            "bytes": len(r.body)})
+        ctx.store.add_fact(sm["id"], "source map capture truncated by body cap",
+                           "observed", kind="collection-gap", evidence=url,
+                           source="mapparse")
         return
     try:
         data = json.loads(r.text())
     except ValueError:
         ctx.store.update_attrs(sm["id"], {"status": r.status, "invalid_json": True})
         return
-    ctx.store.update_attrs(sm["id"], {"status": 200})
+    ctx.store.update_attrs(sm["id"], {"status": 200, "truncated": False})
     _process_sourcemap(ctx, data, url, page_origin, sm["id"])

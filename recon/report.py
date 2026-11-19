@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Tuple
 from urllib.parse import urlsplit
 
 from .csrf import report_rows as csrf_report_rows
+from .authz import report_rows as authz_report_rows
 from .fields import field_claims_section
+from .ssti import report_rows as ssti_report_rows
+from .upload import report_rows as upload_report_rows
+from .jsledger import JsLedger
 from .score import applicable_classes, freshness, is_inferred_only, sources, version_index
 from .skillmap import SKILLS_DIR_REL, skills_for
 from .store import COVERAGE_STATES, now
@@ -129,6 +133,11 @@ def write_reports(ctx) -> List[Path]:
     kinds = Counter(a["kind"] for a in store.assets(in_scope=True))
     ranked = ranked_endpoints(store)
     facts = store.facts()
+    js = JsLedger(ctx).status(limit=30)
+    from .takeover import TakeoverLedger
+    takeover = TakeoverLedger(ctx).status(limit=25)
+    from .cloud import CloudLedger
+    cloud = CloudLedger(ctx).status(limit=20)
 
     md = [f"---\ntags: [campaign, recon]\nprogram: {camp.program}\nmode: {camp.policy.mode}\n"
           f"generated: {ts}\n---\n",
@@ -147,6 +156,25 @@ def write_reports(ctx) -> List[Path]:
     md.append(_table(["job", "asset", "reason"],
                      [[j["kind"], j["asset_value"], j["note"]] for j in skipped[:80]]))
 
+    md.append("\n## Takeover candidates (conditional, offline)\n")
+    md.append("DNS/provider leads and parent trust references are not claimability or demonstrated "
+              "impact. `recon takeover sync` updates the graph; no automatic resource claim.\n\n")
+    md.append(_table(["candidate", "host", "record", "confidence", "conditional priority", "trust references"],
+                     [[c["id"], c["name"], c["record_type"], c["data"].get("confidence"), c["priority"],
+                       sorted({e["kind"] for e in c["trust_edges"]})] for c in takeover["candidates"]]))
+    md.append(f"\nOpen cleanup receipts: **{len(takeover['cleanup_open'])}**; "
+              f"integrity: **{takeover['integrity']['ok']}**; inventory/coverage incomplete.\n")
+    md.append("\n## Cloud references (conditional, offline)\n")
+    md.append("Static references, signed URLs, IAM-looking names and triage scores are leads, "
+              "not resource ownership, effective permissions or findings. "
+              "`recon cloud sync` parses stored in-scope bodies only; no cloud requests.\n\n")
+    md.append(_table(["reference", "provider", "kind", "identifier", "priority", "signals"],
+                     [[r["id"], r["provider"], r["resource_kind"], r["native_identifier"],
+                       r["score"], r["triage_signals"]] for r in cloud["top"]]))
+    md.append(f"\nReference rows: **{cloud['candidates']}**; offline generated host proposals: "
+              f"**{cloud['generated_candidates']}** (unprobed, ownership unknown); "
+              f"recorded events: **{cloud['events']}**; inventory/coverage incomplete; "
+              "no finding promoted.\n")
     md.append("\n## Services\n")
     md.append(_table(["origin", "status", "title", "tech", "spa", "waf/cdn"],
                      [[s["value"], s["attrs"].get("status"), s["attrs"].get("title"),
@@ -240,7 +268,30 @@ def write_reports(ctx) -> List[Path]:
               "byte predicate is supported, not XSS, IDOR or other exploitability.\n\n")
     md.append(_table(["fact", "response", "outcome", "predicate claim", "reason", "capture basis"],
                      [[f["fact_id"], f["request_id"], f["outcome"], f["claim"], f["reason"], f["capture_basis"]]
-                      for f in ResponseFacts(ctx).recent(50)]))
+                       for f in ResponseFacts(ctx).recent(50)]))
+    md.append("\n## JS intelligence (stored responses; no endpoint tests)\n")
+    md.append("The build/asset graph is bounded. Gaps are not negatives; imported captures are not "
+              "fresh native responses. `js plan --packets` generates value-free work cards. "
+              "`complete=false` blocks a coarse JS coverage closure.\n\n")
+    md.append(f"Artifacts {js['artifacts']} · identified builds {js['builds']} · "
+              f"integrity {'ok' if js['integrity']['ok'] else 'FAILED'} · "
+              f"complete {str(js['complete']).lower()}.\n")
+    md.append(f"Showing {min(150, len(js['stages']))}/{len(js['stages'])} stage rows and "
+              f"{len(js['leads'])}/{js['leads_total']} ranked leads; a truncated report is not closure.\n")
+    md.append(_table(["origin", "traffic-only", "precache-only", "import-map", "missing", "out-of-scope"],
+                     [[o, len(g["traffic_only"]), g["precache_only"], g["importmap_resolved"],
+                       len(g["pending"]), len(g["out_of_scope"])] for o, g in sorted(js["graphs"].items())]))
+    md.append(_table(["build", "stage", "state", "reason"],
+                     [[s["build_id"], s["stage"], s["state"], s["reason"]]
+                      for s in js["stages"][:150]]))
+    md.append(_table(["priority", "family", "lane", "subject", "why", "gain"],
+                     [[l["priority"], l["family"], l["lane"], l["subject"], l["reason"], l["gain"]]
+                      for l in js["leads"][:30]]))
+    md.append("\n### Retained builds (not proof that a retired operation still exists)\n")
+    md.append(_table(["origin", "build", "first", "last", "assets", "js_only", "zombie", "old hits"],
+                     [[b["origin"], b["build_key"], b["first_seen"], b["last_seen"], b["artifact_count"],
+                       b["js_only"], b["zombie"], b["retired_assets"]]
+                      for b in JsLedger(ctx).builds()["builds"][:100]]))
     failed = [j for j in jobs if j["state"] == "failed"]
     md.append("\n## Failed jobs\n")
     md.append(_table(["job", "asset", "error"],
@@ -255,6 +306,19 @@ def write_reports(ctx) -> List[Path]:
     untested = sorted((c for c in cov if c["status"] == "untested"),
                       key=lambda c: (-score_of.get(c["asset_id"], 0), c["asset_value"]))
     csrf = csrf_report_rows(ctx)
+    ssti = ssti_report_rows(ctx)
+    authz = authz_report_rows(ctx)
+    upload = upload_report_rows(ctx)
+    from .logic import LogicLedger
+    from .race import RaceLedger
+    logic_ledger, race_ledger = LogicLedger(ctx), RaceLedger(ctx)
+    logic_summary, race_summary = logic_ledger.status(25), race_ledger.status(25)
+    logic_plan, race_plan = logic_ledger.plan(limit=25), race_ledger.plan(limit=25)
+    open_assets = {asset for wf in logic_ledger.model.workflows()
+                   for asset in logic_ledger.model.operation_assets(wf)}
+    coarse_workflow = logic_ledger.model.coarse_conflicts(open_assets)
+    js_coarse = [c for c in cov if c["bug_class"] == "js-bundle" and
+                 c["status"] != "untested" and not js["complete"]]
     cv = [f"---\ntags: [campaign, coverage]\nprogram: {camp.program}\ngenerated: {ts}\n---\n",
           f"# Coverage: {camp.program}\n",
            "Coarse endpoint-family × bug-class backlog. Recon seeds `untested` rows only; "
@@ -264,9 +328,22 @@ def write_reports(ctx) -> List[Path]:
           "<tested|confirmed|refuted|n-a|queued> --note \"...\"`\n",
           f"The `skill` column names the skill in `{SKILLS_DIR_REL}/` to load before testing "
           "the row (primary first). Skills are instructions, not test results.\n",
-          "## By class\n",
-          _table(["class"] + list(COVERAGE_STATES),
-                 [[k] + [v.get(s, 0) for s in COVERAGE_STATES] for k, v in sorted(by_cls.items())]),
+           "## By class\n",
+           "Takeover rows are host/zone investigation backlogs. A coarse status never certifies "
+           "all DNS record types, claimability, chains or cleanup; inspect `recon takeover status`.\n",
+           _table(["class"] + list(COVERAGE_STATES),
+                  [[k] + [v.get(s, 0) for s in COVERAGE_STATES] for k, v in sorted(by_cls.items())]),
+           "\n## JS bundle coverage\n",
+           "Per-service JS rows remain open while `recon js status` reports unresolved asset, "
+           "role, stage or top-band rung work. Coarse statuses cannot override that.\n",
+           _table(["identified builds", "artifacts", "integrity", "complete"],
+                  [[js["builds"], js["artifacts"], js["integrity"]["ok"], js["complete"]]]),
+           _table(["origin", "js_only", "zombie", "traffic-only"],
+                  [[o, len(js["sets"].get(o, {}).get("js_only", [])),
+                    len(js["sets"].get(o, {}).get("zombie", [])), len(g["traffic_only"])]
+                   for o, g in sorted(js["graphs"].items())]),
+           _table(["coarse asset", "status", "contradiction"],
+                  [[c["asset_value"], c["status"], "JS ledger still incomplete"] for c in js_coarse]),
           f"\n## Untested, freshest first ({len(untested)} rows)\n",
           _table(["asset id", "endpoint/service", "class", "why applicable", "skill"],
                  [[c["asset_id"], c["asset_value"], c["bug_class"], c["reason"],
@@ -277,9 +354,40 @@ def write_reports(ctx) -> List[Path]:
           "claim is accepted by the engine only when every trigger cell is captured or "
           "n-a; `partial` was stamped automatically because cells were missing. "
           "Missing cells are named.\n",
-          _table(["module", "claim", "missing triggers", "updated"],
-                 field_claims_section(ctx)),
-          "\n## CSRF action coverage\n",
+           _table(["module", "claim", "missing triggers", "updated"],
+                  field_claims_section(ctx)),
+           "\n## Access-control and mass-assignment cases\n",
+           "Offline exact-operation/context worklist (`recon authz plan/status`). "
+           "A sent field is not an accepted field: use `recon fields diff` for declared/sent "
+           "leads. `observed` is operator evidence, not an independently confirmed finding. "
+           "Declared request counts do not enforce external traffic budgets.\n",
+           f"Visible {authz['visible']}/{authz['total']} targets; "
+           f"truncated {authz['truncated']}; artifact integrity "
+           f"{'ok' if authz['artifact_integrity'] else 'FAILED'}; "
+           f"current evidence {'yes' if authz['verified'] else 'no (stale/invalid)'}; "
+           f"states {authz['totals']}.\n",
+           _table(["target", "context", "case", "state/readiness"], authz["open"]),
+           *( ["\n### Coarse authorization rows with open case work\n",
+               _table(["asset", "class", "coarse status"], authz["coarse"])]
+              if authz["coarse"] else [] ),
+           "\n## File-upload lifecycle cases\n",
+           "Offline sink × context × case worklist (`recon upload plan/status`). Accepted, "
+           "stored, processed, served and executed are separate artifact-backed facts; a 201, "
+           "thumbnail or callback is not execution. `impact-demonstrated` is operator evidence "
+           "for review, not a confirmed finding. Declared Burp/browser/scanner counts are not "
+           "measured traffic.\n",
+           f"Visible {upload['visible']}/{upload['total']} sinks; artifact integrity "
+           f"{'ok' if upload['artifact_integrity'] else 'FAILED'}; current evidence "
+           f"{'yes' if upload['verified'] else 'no (stale/invalid)'}; states {upload['totals']}.\n",
+           _table(["sink", "context", "case", "state/readiness"], upload["open"]),
+           *(["\n### Upload objects awaiting cleanup\n",
+              _table(["event", "host", "objects", "retention deadline", "overdue"], upload["cleanup"])]
+             if upload["cleanup"] else []),
+           *(["\n### Stopped upload hosts\n",
+              _table(["host", "stop", "event"], upload["stopped"])] if upload["stopped"] else []),
+           *(["\n### Coarse file-upload rows with open case work\n",
+              _table(["asset", "coarse status"], upload["coarse"])] if upload["coarse"] else []),
+           "\n## CSRF action coverage\n",
           "Per-origin action x context x case ledger (`python3 -m recon csrf status`). "
           "Fieldless actions, GET mutations, GraphQL operations and realtime handshakes are "
           "actions of their own; open = untested, in progress or reopened by a changed "
@@ -293,7 +401,50 @@ def write_reports(ctx) -> List[Path]:
           *(["\n### Coarse rows contradicted by open action cases\n",
              _table(["asset id", "coarse status", "open action cases"], csrf["coarse"])]
             if csrf["coarse"] else []),
-          "\n## Worked rows\n",
+           "\n## SSTI input × render-surface evidence\n",
+            "Each set is scoped to one field context; submission, later views, email and exports "
+            "remain independent. Confirmed here means two inert arithmetic evaluations and a "
+            "literal control with stored submission receipts, not code execution or a finding. "
+            "Missing probes are work, not a negative verdict. Artifacts and later responses "
+            "still require an operator to verify causality and account ownership.\n",
+            f"Audited {ssti['limits']['audited_sets']}/{ssti['limits']['total_sets']} sets; "
+            f"displayed {ssti['limits']['visible_surfaces']}/"
+            f"{ssti['limits']['total_audited_surfaces']} audited surfaces and "
+            f"{ssti['limits']['visible_candidates']}/"
+            f"{ssti['limits']['total_candidates_in_first_1000_endpoints']} candidate gaps "
+            "(candidate scan covers at most 1,000 endpoints). A truncated report is not "
+            "a complete coverage audit.\n",
+           _table(["host", "asset", "field", "account", "role", "tenant", "workflow", "set",
+                   "surface", "kind", "confirmed syntax family", "depth rungs proven",
+                   "severity ceiling", "missing probes", "integrity"],
+                  ssti["surfaces"]),
+           "\n### SSTI inputs without a probe set\n",
+           _table(["asset", "endpoint", "gap", "next action"], ssti["candidates"]),
+           "\n### Next SSTI probes on open surfaces\n",
+            _table(["set", "surface", "kind", "missing probe IDs"], ssti["next"]),
+           "\n### Coarse SSTI rows contradicted by open input/surface work\n",
+            _table(["asset", "coarse status", "open surfaces or gap"], ssti["coarse"]),
+            "\n## Business-invariant and race evidence (offline views)\n",
+            "`logic` and `race` share one workflow/invariant contract. An anomaly is not an adjudicated "
+            "rule; a lab event is not target proof. An operator-attested gate is not agent-driven "
+            "synchronization. Neither view sends traffic or promotes findings.\n",
+            f"Logic observations {logic_summary['observation_total']}, events "
+            f"{logic_summary['event_total']}; race scenarios {race_summary['scenario_total']}, "
+            f"runs {race_summary['run_total']}; verification "
+            f"logic={logic_summary['verify']['verified']}, race={race_summary['verify']['verified']}.\n",
+            f"Historical stale events logic={len(logic_summary['verify']['stale'])}, "
+            f"race={len(race_summary['verify']['stale'])}; unresolved obligations "
+            f"{len(logic_summary['obligations'])}. Lists below are capped at 25.\n",
+            _table(["workflow", "context", "invariant", "policy", "readiness"],
+                   [[r["workflow"], r["context"], r["invariant"], r["policy_status"], r["readiness"]]
+                    for r in logic_plan["rows"]]),
+            _table(["scenario", "case", "context", "policy", "readiness"],
+                   [[r["scenario"], r["family"], r["context"], r["policy_status"], r["readiness"]]
+                    for r in race_plan["rows"]]),
+            *( ["\n### Coarse BL/race statuses cannot close open exact cases\n",
+                 _table(["asset", "class", "coarse status"], coarse_workflow)]
+               if coarse_workflow else [] ),
+            "\n## Worked rows\n",
           _table(["asset id", "endpoint/service", "class", "status", "note"],
                  [[c["asset_id"], c["asset_value"], c["bug_class"], c["status"], c["note"]]
                   for c in cov if c["status"] != "untested"])]

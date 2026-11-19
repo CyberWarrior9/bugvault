@@ -27,7 +27,7 @@ from .store import Store
 JOB_NEEDS = {
     "crtsh": "passive", "wayback": "passive",
     "probe": "active", "wellknown": "active", "jsharvest": "active",
-    "jsparse": "active", "mapparse": "active", "runtime": "active",
+    "jsparse": "active", "mapparse": "active", "runtime": "active", "jsretained": "active",
 }
 ON_NEW = {
     "domain": ["crtsh", "wayback"],
@@ -37,7 +37,6 @@ ON_NEW = {
     "sourcemap": ["mapparse"],
 }
 URL_KINDS = {"service", "endpoint", "js", "sourcemap", "route"}
-MAX_JS_PER_ORIGIN = 300
 
 
 def _is_ip(s: str) -> bool:
@@ -127,7 +126,7 @@ class Recon:
         # Per-method representation/auth hints (CSRF action contexts); endpoint attrs
         # merge across methods, so these stay on the operation as well.
         for hint in ("content_types", "form_enctypes", "csrf_token_fields",
-                     "spec_content_types", "spec_auth"):
+                      "spec_content_types", "spec_auth", "static_content_types", "js_header_names"):
             if isinstance((extra or {}).get(hint), list) and extra[hint]:
                 op_attrs[hint] = [str(v) for v in extra[hint]][:20]
         self.store.operation(aid, method, op_attrs)
@@ -178,6 +177,7 @@ class Recon:
             "probe": active.job_probe, "wellknown": active.job_wellknown,
             "jsharvest": active.job_jsharvest, "jsparse": active.job_jsparse,
             "mapparse": active.job_mapparse, "runtime": runtime.job_runtime,
+            "jsretained": active.job_jsretained,
         }
         requeued = self.store.requeue(["skipped"], self.policy.allows)
         if requeued:
@@ -229,4 +229,11 @@ class Recon:
                 n += self.store.seed_coverage(e["id"], applicable_classes(e))
         for s in self.store.assets("service", in_scope=True):
             n += self.store.seed_coverage(s["id"], packs_for(s["attrs"].get("tech", [])))
+        # Takeover applies to DNS hosts/zones, not endpoint input parameters.
+        for fact in self.store.facts("takeover-lead"):
+            if fact["asset_id"] is not None:
+                asset = self.store.get_asset(fact["asset_id"])
+                if asset["in_scope"]:
+                    n += self.store.seed_coverage(asset["id"], {"subdomain-takeover":
+                                                              "inferred DNS/provider signal; verify claimability"})
         return n

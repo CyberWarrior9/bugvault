@@ -26,7 +26,10 @@ REPO = Path(__file__).resolve().parents[1]
 # Imported mind-hunt authentication skills (licence/provenance/hard-limit pins apply);
 # listed explicitly so a new original hunt skill is never treated as imported auth content.
 AUTH_SKILLS = ["hunt-auth-bypass", "hunt-ato", "hunt-mfa-bypass", "hunt-oauth", "hunt-saml"]
-ORIGINAL_HUNT_SKILLS = ["hunt-ssrf", "hunt-idor", "hunt-xss", "hunt-sqli", "hunt-csrf"]
+ORIGINAL_HUNT_SKILLS = ["hunt-ssrf", "hunt-idor", "hunt-xss", "hunt-sqli", "hunt-csrf", "hunt-ssti",
+                         "hunt-access-control", "hunt-file-upload", "hunt-js-bundle",
+                         "hunt-business-logic", "hunt-race-conditions", "hunt-takeover",
+                         "hunt-cloud-misconfig"]
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", "h1_sample"}
 REPORT_INDEX = REPO / "vault" / "_data" / "reports-merged.csv"
 
@@ -104,7 +107,7 @@ class SkillFolderTests(unittest.TestCase):
         for entry in data["phases"] + data["hunt_skills"]:
             self.assertTrue((REPO / entry["guide"]).is_file(), entry["guide"])
         self.assertEqual(data["execution"]["skill_dir"], ".claude/skills")
-        self.assertEqual(data["execution"]["hunt_skills"], 10)
+        self.assertEqual(data["execution"]["hunt_skills"], 18)
         self.assertEqual({key for key, _ in HUNT_SKILLS},
                          set(AUTH_SKILLS) | set(ORIGINAL_HUNT_SKILLS))
         self.assertEqual(data["execution"]["capability_guides"], 8)
@@ -135,6 +138,39 @@ class SkillFolderTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as done:
                     main(argv)
                 self.assertEqual(done.exception.code, 0, f"recon {' '.join(argv)} is not a command")
+
+    def test_invariant_skills_route_and_keep_external_sources_distinct(self):
+        self.assertEqual(skills_for("business-logic"), ("hunt-business-logic",))
+        self.assertEqual(skills_for("race-conditions"), ("hunt-race-conditions",))
+        for name in ("hunt-business-logic", "hunt-race-conditions"):
+            with self.subTest(name=name):
+                text = skill_text(name)
+                self.assertIn("scope-policy", text)
+                self.assertIn("no target executor" if name == "hunt-business-logic" else
+                              "no synchronized sender", text)
+                source = (SKILLS_DIR / name / "references" / "sources.md").read_text()
+                self.assertIn("SHA-256", source)
+                self.assertIn("not a substantial adaptation", source)
+        data = catalog()
+        self.assertEqual(data["execution"]["capability_guides"], 8)
+        self.assertEqual(data["execution"]["hunt_skills"], 18)
+        self.assertEqual(len(skill_dirs()), 26)
+
+
+class JsSkillWiringTests(unittest.TestCase):
+    def test_js_capability_is_partial_and_has_no_unscoped_executor(self):
+        text = skill_text("hunt-js-bundle")
+        for needle in ("scope-policy", "js-bundle", "js_only", "zombie", "J17",
+                       "--packets", "--lineage", "max_old_assets", "complete=false",
+                       "negative control", "out-of-scope", "M6", "M7"):
+            self.assertIn(needle, text)
+        for pattern in (r"\bcurl\s", r"\b(?:pip|npm)\s+publish\b",
+                        r"\b(?:spray|brute.?force)\s+(?:tokens|credentials)\b"):
+            self.assertIsNone(re.search(pattern, text, re.I))
+        self.assertEqual(skills_for("js-bundle"), ("hunt-js-bundle",))
+        self.assertEqual(skills_for("info-disclosure"), ("hunt-js-bundle",))
+        self.assertTrue(any(item[0] == "JS build/lead ledger" and item[2] == "native-offline"
+                            for item in __import__("recon.catalog", fromlist=["TOOLS"]).TOOLS))
 
 
 class AuthSkillPolicyTests(unittest.TestCase):
@@ -398,8 +434,8 @@ class TriggerTests(unittest.TestCase):
             self.assertTrue(mfa and "hunt-mfa-bypass" in mfa[0])
             csrf_row = [r for r in rows if "/api/mfa/verify" in r and "| csrf |" in r]
             self.assertTrue(csrf_row and csrf_row[0].rstrip().endswith("| hunt-csrf |"))
-            unmapped = [r for r in rows if "/api/mfa/verify" in r and "| mass-assignment |" in r]
-            self.assertTrue(unmapped and unmapped[0].rstrip().endswith("| - |"))
+            mapped = [r for r in rows if "/api/mfa/verify" in r and "| mass-assignment |" in r]
+            self.assertTrue(mapped and mapped[0].rstrip().endswith("| hunt-access-control |"))
             brief = render(camp, "hunter")
             for needle in (".claude/skills", "`hunt-auth-bypass`", f"recon send {camp.name}"):
                 self.assertIn(needle, brief)
