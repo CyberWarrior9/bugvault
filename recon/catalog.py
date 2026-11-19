@@ -17,6 +17,14 @@ HUNT_SKILLS = (
                               "credential validation, impact executor or finding promotion"),
     ("hunt-takeover", "Offline DNS/referral/wildcard and stale-host graph, provider freshness, "
                       "conditional trust ranking and operator claim/cleanup evidence; no claimer"),
+    ("hunt-xxe", "XXE: rung (surface/parse/entity/read/pivot) separated from channel "
+                 "(in-band/error-local/error-external/oob/blind); in-band and error-local "
+                 "prove read with no egress and no callback grant; content-type-flip and "
+                 "document sinks; DoS variants excluded"),
+    ("hunt-graphql", "GraphQL schema exposure: introspection state per principal, "
+                     "suggestion-based reconstruction when introspection is off, field-level "
+                     "versus node-level authz, bulk root resolvers, internal/public schema "
+                     "divergence; substitution stays with hunt-idor, transport with hunt-csrf"),
     ("hunt-ssrf", "SSRF: browser/Burp-only live workflow, attributed canaries, parser/redirect/DNS "
                   "matrix, scoped internal/cloud branches, offline case ledger and callback correlation"),
     ("hunt-idor", "IDOR/BOLA/BFLA: object/identity substitution across path/query/body/header/GraphQL, "
