@@ -118,6 +118,17 @@ def cmd_check(a) -> int:
 
 def cmd_run(a) -> int:
     from .report import write_reports
+    from . import skillguard
+    # Preflight: the skills a model will read are not the engine's gates, but a skill
+    # that has lost its scope-and-limits language is worth knowing about before a run
+    # rather than after. Reports by default; refuses only with --require-intact-skills.
+    guard = skillguard.verify(strict=bool(getattr(a, "require_intact_skills", False)))
+    if guard["state"] != "intact":
+        print(skillguard.report_text(guard))
+    if guard["blocking"]:
+        print("refusing to run: a skill lost a guardrail marker and "
+              "--require-intact-skills was given", file=sys.stderr)
+        return 1
     ctx = _load(a.campaign)
     if a.rerun:
         print(f"re-queued {ctx.store.rerun(a.rerun)} {a.rerun} job(s)")
@@ -126,6 +137,22 @@ def cmd_run(a) -> int:
     for p in write_reports(ctx):
         print(f"wrote {p}")
     return 0
+
+
+def cmd_skills_record(a) -> int:
+    from . import skillguard
+    data = skillguard.record(note=a.note)
+    print(f"recorded {len(data['skills'])} skills to "
+          f"{skillguard.MANIFEST.relative_to(skillguard.REPO)}")
+    print("digests and guardrail-marker counts only; engine gates do not consult this file")
+    return 0
+
+
+def cmd_skills_verify(a) -> int:
+    from . import skillguard
+    result = skillguard.verify(strict=a.strict)
+    print(skillguard.report_text(result))
+    return 1 if result["blocking"] else 0
 
 
 def cmd_har(a) -> int:
@@ -1178,6 +1205,8 @@ def main(argv=None) -> int:
     s.add_argument("campaign")
     s.add_argument("--max-jobs", type=int, default=2000)
     s.add_argument("--rerun", help="re-queue every job of this kind (e.g. jsparse)")
+    s.add_argument("--require-intact-skills", action="store_true",
+                   help="refuse the run when a skill lost a guardrail marker")
     s.set_defaults(fn=cmd_run)
     s = sub.add_parser("import-har")
     s.add_argument("campaign")
@@ -1202,6 +1231,17 @@ def main(argv=None) -> int:
     s = sub.add_parser("status")
     s.add_argument("campaign")
     s.set_defaults(fn=cmd_status)
+
+    s = sub.add_parser("skills", help="skill-file integrity: digest + guardrail-marker "
+                                      "baseline; prose is never parsed as policy")
+    sk = s.add_subparsers(dest="action", required=True)
+    f = sk.add_parser("record", help="record the current skills as the reviewed baseline")
+    f.add_argument("--note", default="")
+    f.set_defaults(fn=cmd_skills_record)
+    f = sk.add_parser("verify", help="report drift from the recorded baseline")
+    f.add_argument("--strict", action="store_true",
+                   help="exit non-zero when a guardrail marker was lost")
+    f.set_defaults(fn=cmd_skills_verify)
     s = sub.add_parser("js", help="offline JS build/asset/lead ledger; no probes or finding promotion")
     js_actions = s.add_subparsers(dest="action", required=True)
     for action in ("sync", "status", "builds", "verify"):

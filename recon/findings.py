@@ -153,6 +153,57 @@ CHAIN_HINTS: Tuple[Tuple[str, str, str], ...] = (
     ("ssrf", "cloud-metadata", "SSRF -> instance metadata credentials -> cloud access"),
     ("info-disclosure", "access-control", "leaked key/token/ID -> authenticated access"),
     ("known-cve", "access-control", "pre-auth CVE on an internal/admin surface"),
+
+    # ---- backfill 2026-11-22: twelve routed classes had no edge in either direction,
+    # so `chain status` could not propose a next step for them. Each row below names the
+    # observation that licenses the edge, not merely that two classes are related.
+    ("http-smuggling", "cache", "a smuggled request's response is stored under a popular "
+     "key -> every later viewer is served it; needs a second client you control, not a "
+     "shared production key"),
+    ("http-smuggling", "access-control", "smuggle a prefix past the front-end ACL -> the "
+     "back-end treats it as internally routed; prove the route was externally refused first"),
+    ("http-smuggling", "idor-bola", "a smuggled request pairs with the next connection's "
+     "credentials -> that principal's object in your response queue; only between owned clients"),
+    ("cache", "xss", "a poisoned cacheable asset or HTML serves attacker script to a second "
+     "viewer -> stored-XSS-equivalent; browser execution must be shown, not reflected bytes"),
+    ("cache", "ato", "cache deception stores an authenticated representation under an "
+     "unauthenticated key -> a second viewer reads the session owner's data"),
+    ("xxe", "ssrf", "an external entity resolves an attacker-chosen URL -> server-side fetch; "
+     "a fetched DTD is reach, not file read"),
+    ("xxe", "info-disclosure", "entity expansion returns local file content in-band or in an "
+     "error -> file read without any egress"),
+    ("deserialization", "command-injection", "a gadget chain reaches a process or shell sink "
+     "-> execution; a decode error does not close the sink, __destruct fires on failure too"),
+    ("deserialization", "access-control", "a forged object sets role, tenant or identity "
+     "fields the API never exposes -> privileged state without an object swap"),
+    ("command-injection", "cloud-metadata", "execution on an instance -> metadata credentials; "
+     "marker output alone is execution, the credential read is the separate impact fact"),
+    ("graphql", "idor-bola", "introspection or suggestion leakage names node ids and object "
+     "references that the REST surface never exposed -> substitution targets"),
+    ("graphql", "access-control", "field-level policy differs from node-level policy -> read a "
+     "field the operation should have denied"),
+    ("js-bundle", "info-disclosure", "a bundle or source map carries a key, internal hostname "
+     "or privileged operation -> verified disclosure, never the static reference alone"),
+    ("js-bundle", "idor-bola", "a bundle names object-scoped endpoints absent from the live "
+     "surface -> identifiers to substitute"),
+    ("race-conditions", "business-logic", "a schedule-dependent write violates a declared owned "
+     "invariant -> the logic consequence is the finding, the race is the mechanism"),
+    ("business-logic", "ato", "an invariant violation yields control of another owned account's "
+     "state; terminal impact, not an unexplained value"),
+    ("mfa-bypass", "ato", "a post-MFA server session obtained without the second factor -> "
+     "takeover of the owned account that factor protected"),
+    ("saml", "ato", "an accepted assertion for a second owned test identity -> that account's "
+     "session; a signature-check failure alone is not acceptance"),
+    ("saml", "access-control", "role or group claims honoured from an attacker-influenced "
+     "assertion -> privileged function"),
+    ("oauth", "ato", "an exchanged code or token for a second owned account -> its session; "
+     "closes the dead end where oauth was only ever a chain target"),
+    ("access-control", "info-disclosure", "reached an admin or internal surface -> configuration, "
+     "key or credential read; closes the dead end where access-control never chained onward"),
+    ("cloud-misconfiguration", "info-disclosure", "a readable storage object or exposed metadata "
+     "endpoint -> independently verified sensitive content, not a public identifier"),
+    ("cloud-misconfiguration", "ato", "a recovered cloud credential or signed URL grants an owned "
+     "account's data or an identity pivot; requires the operator's own approved exercise"),
 )
 
 

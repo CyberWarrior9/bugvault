@@ -1,0 +1,322 @@
+{
+  "markers_tracked": [
+    "## hard limits",
+    "scope-policy",
+    "scope/rate/budget",
+    "dedicated browser through burp",
+    "no real money",
+    "real-user",
+    "do not",
+    "never",
+    "owned",
+    "operator-owned"
+  ],
+  "note": "baseline recorded 2026-11-22 from the tree as the operator elected to keep it",
+  "policy": "digest and guardrail-marker counts only; prose is never parsed as policy, and engine gates do not consult this file",
+  "schema_version": 1,
+  "skills": {
+    "apk-static-mapping": {
+      "bytes": 3382,
+      "markers": {
+        "do not": 2,
+        "never": 2,
+        "owned": 1,
+        "scope-policy": 1
+      },
+      "sha256": "8c8024a72bdd848cb2102605e966681167867f5227bae49fde4d2b31fd68bffe"
+    },
+    "captured-auth-mapping": {
+      "bytes": 1438,
+      "markers": {
+        "do not": 1
+      },
+      "sha256": "d5dc7634eaea8c1ad8431dd4c0a1edd754c9d5ffd14bde936dcf18339c326952"
+    },
+    "hunt-access-control": {
+      "bytes": 9403,
+      "markers": {
+        "do not": 1,
+        "never": 6,
+        "owned": 18,
+        "real-user": 1,
+        "scope-policy": 1
+      },
+      "sha256": "669092a7b1d7cbd7d14436e7dfebac9bbbe376c570d37ff5094fbc27a1b2a003"
+    },
+    "hunt-ato": {
+      "bytes": 8256,
+      "markers": {
+        "never": 5,
+        "operator-owned": 1,
+        "owned": 1
+      },
+      "sha256": "2f1bfa4c583832461eaef333ddc62a4463e094e5f2ae8e3088b6cc1322faef31"
+    },
+    "hunt-auth-bypass": {
+      "bytes": 11269,
+      "markers": {
+        "do not": 1,
+        "never": 4,
+        "operator-owned": 1,
+        "owned": 2,
+        "scope-policy": 1
+      },
+      "sha256": "b653de70a48284cd86bccf3404086ac9e25988fcaa5d260f783105637dc50446"
+    },
+    "hunt-business-logic": {
+      "bytes": 3820,
+      "markers": {
+        "never": 3,
+        "owned": 6
+      },
+      "sha256": "f7c2fcc9205ae293869b034cb1ae513e8cd5d44eebd200306f3213012fc8bc26"
+    },
+    "hunt-cache": {
+      "bytes": 5736,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 1,
+        "never": 5,
+        "owned": 4,
+        "scope-policy": 1
+      },
+      "sha256": "1283bc82723e6f8f141ea2306c1b32263ec3b6df32ca4e40aef400f5370234a5"
+    },
+    "hunt-cloud-misconfig": {
+      "bytes": 6448,
+      "markers": {
+        "do not": 3,
+        "never": 4,
+        "operator-owned": 1,
+        "owned": 1
+      },
+      "sha256": "c92fcf3d11b7bb8462560595856420d35649e38636aa8a0d4ebde69ce6104637"
+    },
+    "hunt-csrf": {
+      "bytes": 16479,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 1,
+        "never": 6,
+        "owned": 2
+      },
+      "sha256": "ecfe342b559e91057184202a4002fad92a11fe47ce84daeb7c61dcd1195eda1d"
+    },
+    "hunt-file-upload": {
+      "bytes": 6650,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 1,
+        "never": 5,
+        "owned": 7,
+        "real-user": 1
+      },
+      "sha256": "2818230d5a10c479b387225a99e20068848845e7d334a921f70efaf513b6c05f"
+    },
+    "hunt-graphql": {
+      "bytes": 7082,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 1,
+        "never": 2
+      },
+      "sha256": "8cdaad19442c43fa4eedcbd6fb97c2c6bf15d35f2ce14fa681bd3d221eab1a62"
+    },
+    "hunt-http-smuggling": {
+      "bytes": 8243,
+      "markers": {
+        "## hard limits": 1,
+        "do not": 7,
+        "never": 1,
+        "owned": 10,
+        "scope-policy": 1
+      },
+      "sha256": "5050b7da48f516eadc9b2de0779279b6ecc13972e6c727fb260e6f3a5c5cadf3"
+    },
+    "hunt-idor": {
+      "bytes": 7596,
+      "markers": {
+        "do not": 1,
+        "never": 3,
+        "owned": 1,
+        "scope-policy": 1
+      },
+      "sha256": "80e8a024de3773e3a6c8cc3bb91c30abc1e643ba01091e684e2401b13b09ed4f"
+    },
+    "hunt-js-bundle": {
+      "bytes": 6643,
+      "markers": {
+        "do not": 4,
+        "never": 8,
+        "operator-owned": 1,
+        "owned": 2,
+        "scope/rate/budget": 1
+      },
+      "sha256": "d501de85e216a34ea785690342041cf617adf9ae6a564b7ac64274e3a7be241b"
+    },
+    "hunt-mfa-bypass": {
+      "bytes": 8179,
+      "markers": {
+        "## hard limits": 1,
+        "do not": 1,
+        "never": 5,
+        "operator-owned": 1,
+        "owned": 1,
+        "scope-policy": 2
+      },
+      "sha256": "2ef96b07f18ba8fc427731cf7ae4b642b459c0cfb74ca24860fe5da3996c9765"
+    },
+    "hunt-oauth": {
+      "bytes": 11658,
+      "markers": {
+        "never": 5,
+        "operator-owned": 1,
+        "owned": 1
+      },
+      "sha256": "a6f8892c03ff3e22dcc42f845d4b62a2dbd27778c735aff418d2eacac64c5a44"
+    },
+    "hunt-race-conditions": {
+      "bytes": 4334,
+      "markers": {
+        "do not": 1,
+        "never": 3,
+        "owned": 6
+      },
+      "sha256": "011c5eafc6e5bf689e3f1cf997337b590d6732c655b42bda70361b3001186966"
+    },
+    "hunt-rce": {
+      "bytes": 4245,
+      "markers": {
+        "never": 4,
+        "owned": 4
+      },
+      "sha256": "3acd6902beed4bfbcf2e323e9cca8de5d74a387e0dc89a3527e868f364b74e70"
+    },
+    "hunt-saml": {
+      "bytes": 6776,
+      "markers": {
+        "never": 6,
+        "operator-owned": 1,
+        "owned": 1,
+        "scope-policy": 1
+      },
+      "sha256": "14c4ad64c3b0fb30a1da56430e67cc8063e52aeb6cda9d515debbbb538d092f0"
+    },
+    "hunt-security-misconfig": {
+      "bytes": 8551,
+      "markers": {
+        "do not": 9,
+        "never": 3,
+        "owned": 15
+      },
+      "sha256": "138b88dc6e696cddefccef33f9b3c207d143076cc7091bf289373bd0ec6c3c68"
+    },
+    "hunt-sqli": {
+      "bytes": 7117,
+      "markers": {
+        "never": 5
+      },
+      "sha256": "a94efb1c14dd7d442880fcb9fd26f47b7eccb0a8ffdac3a069996d72430968c7"
+    },
+    "hunt-ssrf": {
+      "bytes": 14937,
+      "markers": {
+        "do not": 10,
+        "never": 3,
+        "operator-owned": 1,
+        "owned": 5,
+        "scope-policy": 2,
+        "scope/rate/budget": 1
+      },
+      "sha256": "4790ca8f2c11749156def8b86d5e9970070b9798671b1aaa1689676b3418e6dc"
+    },
+    "hunt-ssti": {
+      "bytes": 6403,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 2,
+        "never": 4
+      },
+      "sha256": "e54f64fa6ef950191ea6f60d6f189d7bffafe592b7345123971f10ec4c34cff7"
+    },
+    "hunt-takeover": {
+      "bytes": 10121,
+      "markers": {
+        "do not": 7,
+        "never": 6,
+        "operator-owned": 1,
+        "owned": 6,
+        "real-user": 1,
+        "scope-policy": 3,
+        "scope/rate/budget": 1
+      },
+      "sha256": "811f1ee7b7a27e3972abfdfb19cba127c63ce2f0e6824bd50d6606bbcf10a4be"
+    },
+    "hunt-xss": {
+      "bytes": 10963,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 1,
+        "never": 3
+      },
+      "sha256": "678a44a5dca5920ef6f0708a2392ff9dfadfa75f1c173999e1fda81a46bc60a6"
+    },
+    "hunt-xxe": {
+      "bytes": 8504,
+      "markers": {
+        "dedicated browser through burp": 1,
+        "do not": 2,
+        "never": 2,
+        "scope-policy": 1
+      },
+      "sha256": "1294c5a37193366a4cade270e87ac2c04d150a47ec946230ca841e1646401c1e"
+    },
+    "inventory-handoff": {
+      "bytes": 1859,
+      "markers": {
+        "do not": 1,
+        "never": 1
+      },
+      "sha256": "a3a133b85025216822950a61b859a254a765ba7083003a0f66ed4ad03f5c8b2a"
+    },
+    "passive-discovery": {
+      "bytes": 973,
+      "markers": {
+        "never": 1
+      },
+      "sha256": "0005c1ca9197804df9e623682d67efe3b6e11dcf26f83d707817e586a99edadc"
+    },
+    "scope-policy": {
+      "bytes": 3620,
+      "markers": {
+        "do not": 4,
+        "scope-policy": 1,
+        "scope/rate/budget": 1
+      },
+      "sha256": "013e74f9c07283e3ce97e4a0efea27ec3253cedda38f6b425df940811ec8781a"
+    },
+    "service-mapping": {
+      "bytes": 2660,
+      "markers": {
+        "do not": 2,
+        "never": 1
+      },
+      "sha256": "ecf05464d77ccf839bb118bb720b7973664403e1fd3f628476599f1d6d4cf868"
+    },
+    "static-api-mapping": {
+      "bytes": 1683,
+      "markers": {
+        "do not": 1,
+        "never": 1
+      },
+      "sha256": "dfda21a5ab9dca0abcdf5e3e3954e15a22512dc6b247ebf1fa63f4cba5536eb4"
+    },
+    "synthetic-ui-mapping": {
+      "bytes": 1093,
+      "markers": {
+        "do not": 1
+      },
+      "sha256": "f9713a22d3228a40540f476de95ba3e95c521ffb076263cd2025f0c0575506a1"
+    }
+  }
+}
