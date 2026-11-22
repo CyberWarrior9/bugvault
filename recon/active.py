@@ -548,3 +548,83 @@ def job_mapparse(ctx, sm: Dict[str, Any]) -> None:
         return
     ctx.store.update_attrs(sm["id"], {"status": 200, "truncated": False})
     _process_sourcemap(ctx, data, url, page_origin, sm["id"])
+
+
+# ---------------------------------------------------------------- bulk DNS / wildcard
+
+def job_dnsresolve(ctx, asset: Dict[str, Any]) -> None:
+    """Wildcard-filter and bulk-resolve the hosts discovered under one domain.
+
+    This does not duplicate `job_probe`, which resolves one host at a time with the
+    stdlib. The value here is the thing probe cannot do at all: detect wildcard DNS
+    and mark the phantom names it produces, so probe does not spend target budget
+    on hosts that only exist because `*.domain` answers everything.
+
+    Queries go to resolvers, not to the program's hosts, so no target request budget
+    is consumed. Rates are passed explicitly (see recon/dnstools.py).
+    """
+    from . import dnstools
+
+    domain = asset["value"]
+    have = dnstools.availability()
+    if not have["dnsx"] and not have["puredns"]:
+        ctx.store.add_fact(asset["id"], "bulk DNS skipped: neither dnsx nor puredns installed",
+                           "observed", kind="dns-bulk", source="dnsresolve")
+        return
+
+    suffix = f".{domain}"
+    hosts = [a for a in ctx.store.assets(kind="host", in_scope=True)
+             if a["value"] == domain or a["value"].endswith(suffix)]
+    names = sorted({a["value"] for a in hosts})
+    if not names:
+        return
+    by_name = {a["value"]: a for a in hosts}
+
+    # --- wildcard filter first: it only removes names, never adds them.
+    survivors = dnstools.wildcard_survivors(domain, names)
+    if survivors is None:
+        reason = ("puredns not installed" if not have["puredns"]
+                  else f"no resolver list at {dnstools.PUREDNS_RESOLVERS}")
+        ctx.store.add_fact(asset["id"], f"wildcard filtering skipped: {reason}; "
+                                        "subdomain names remain unverified against wildcard DNS",
+                           "observed", kind="dns-wildcard", source="puredns")
+    else:
+        kept = set(survivors)
+        phantom = [n for n in names if n not in kept]
+        for n in phantom:
+            ctx.store.update_attrs(by_name[n]["id"], {"wildcard_suspect": True})
+            ctx.store.add_fact(by_name[n]["id"],
+                               f"did not survive wildcard filtering for {domain}: treat as a "
+                               "phantom name until an independent signal confirms it",
+                               "observed", kind="dns-wildcard", source="puredns")
+        ctx.store.add_fact(asset["id"],
+                           f"wildcard filter: {len(kept)} of {len(names)} names survived, "
+                           f"{len(phantom)} marked phantom", "observed",
+                           kind="dns-wildcard", source="puredns")
+
+    # --- bulk A/CNAME as a cheap pre-pass for probe.
+    rows = dnstools.resolve(names)
+    if rows is None:
+        if have["dnsx"]:
+            ctx.store.add_fact(asset["id"], "dnsx run failed or timed out", "observed",
+                               kind="dns-bulk", source="dnsx")
+        return
+    resolved = 0
+    for row in rows:
+        name = str(row.get("host", "")).strip().lower().rstrip(".")
+        target = by_name.get(name)
+        if not target:
+            continue
+        attrs: Dict[str, Any] = {}
+        ips = [str(x) for x in (row.get("a") or []) if x][:20]
+        cnames = [str(x).rstrip(".") for x in (row.get("cname") or []) if x][:5]
+        if ips:
+            attrs["dnsx_a"] = ips
+        if cnames:
+            attrs["dnsx_cname"] = cnames
+        if attrs:
+            attrs["dnsx_seen"] = True
+            ctx.store.update_attrs(target["id"], attrs)
+            resolved += 1
+    ctx.store.add_fact(asset["id"], f"dnsx: {resolved} of {len(names)} names answered",
+                       "observed", kind="dns-bulk", source="dnsx")

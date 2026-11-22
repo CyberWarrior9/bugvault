@@ -15,7 +15,7 @@ from .brief import authorization_block
 from .campaign import PolicyViolation
 from .pipeline import JOB_NEEDS
 
-JOB_KINDS = {"domain": {"crtsh", "wayback"}, "host": {"probe"},
+JOB_KINDS = {"domain": {"crtsh", "wayback", "dnsresolve"}, "host": {"probe"},
              "service": {"wellknown", "jsharvest", "runtime"}, "js": {"jsparse"},
              "sourcemap": {"mapparse"}}
 

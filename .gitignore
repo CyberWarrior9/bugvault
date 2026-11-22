@@ -24,3 +24,6 @@ vault/10-Campaigns/*
 
 # Operator-supplied third-party MCP bridge; local-only, not part of the MIT source.
 tools/burp/mcp-proxy.jar
+
+# report corpora — large, re-importable; see scripts/import_h1_corpus.py
+vault/_data/corpora/

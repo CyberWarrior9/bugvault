@@ -15,7 +15,8 @@ from urllib.parse import urlsplit
 from .campaign import norm_host
 from .extract import origin_of, path_ext, query_keys
 
-FORMATS = ("bbot", "subfinder", "httpx", "katana", "scopesentry")
+FORMATS = ("bbot", "subfinder", "httpx", "katana", "scopesentry",
+           "dnsx", "puredns", "ffuf", "feroxbuster", "nuclei")
 MAX_ARTIFACT_BYTES = 25_000_000
 MAX_RECORDS = 50_000
 HTTP_METHODS = {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT", "WS"}
@@ -31,7 +32,7 @@ def read_artifact(path: Path, limit: int = MAX_ARTIFACT_BYTES) -> bytes:
 
 def _records(content: bytes, source: str) -> List[Tuple[int, Any]]:
     text = content.decode("utf-8-sig")
-    if text.lstrip().startswith("[") or source == "scopesentry":
+    if text.lstrip().startswith("[") or source in ("scopesentry", "ffuf"):
         data = json.loads(text)
         # ScopeSentry exports vary; support only explicit, bounded list envelopes.
         for _ in range(3):
@@ -52,7 +53,7 @@ def _records(content: bytes, source: str) -> List[Tuple[int, Any]]:
             try:
                 record = json.loads(line)
             except ValueError:
-                record = line.strip() if source == "subfinder" else None
+                record = line.strip() if source in ("subfinder", "puredns") else None
             records.append((index, record))
     if len(records) > MAX_RECORDS:
         raise ValueError(f"artifact exceeds {MAX_RECORDS} record limit")
@@ -87,7 +88,7 @@ def _url(value: Any) -> str:
 
 def _surface_records(source: str, record: Any) -> Iterable[Tuple[str, str, str, Dict[str, Any]]]:
     """Yield kind, value, method, safe metadata; no raw headers, bodies or findings."""
-    if source == "subfinder":
+    if source in ("subfinder", "puredns"):
         value = record.get("host") if isinstance(record, dict) else record
         kind, value = _host(value)
         yield kind, value, "", {}
@@ -109,6 +110,50 @@ def _surface_records(source: str, record: Any) -> Iterable[Tuple[str, str, str, 
                 raise ValueError("missing port")
             display = f"[{host}]" if ":" in host else host
             yield "network-service", f"{display}:{p.port}", "", {"host": host, "port": p.port}
+        return
+    if source == "dnsx":
+        kind, host = _host(record.get("host"))
+        attrs: Dict[str, Any] = {}
+        a = record.get("a")
+        if isinstance(a, list) and all(isinstance(x, str) for x in a):
+            attrs["reported_a"] = [x[:60] for x in a[:20]]
+        cname = record.get("cname")
+        if isinstance(cname, list) and all(isinstance(x, str) for x in cname):
+            attrs["reported_cname"] = [x.rstrip(".")[:255] for x in cname[:5]]
+        yield kind, host, "", attrs
+        return
+    if source in ("ffuf", "feroxbuster"):
+        # A fuzzer hit is a CLAIM about a path, never a confirmed finding. Import it
+        # as a URL with the reported status only, exactly as httpx results are
+        # treated, so a 200 from a soft-404 page cannot masquerade as evidence.
+        if source == "feroxbuster" and str(record.get("type", "")) != "response":
+            return  # statistics/banner lines carry no surface
+        attrs = {}
+        status = record.get("status") if source == "ffuf" else record.get("status")
+        if isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599:
+            attrs["reported_status"] = status
+        length = record.get("length") if source == "ffuf" else record.get("content_length")
+        if isinstance(length, int) and not isinstance(length, bool) and 0 <= length <= 10_000_000:
+            attrs["reported_length"] = length
+        attrs["unverified_scanner_claim"] = source
+        yield "url", _url(record.get("url")), record.get("method", ""), attrs
+        return
+    if source == "nuclei":
+        # A nuclei match is a template CLAIM about a URL, never a confirmed finding:
+        # the template id and severity are imported as labels on the surface so the
+        # lead can be chased, and the match itself still has to be reproduced and
+        # proven like any other lead. `info.severity` is nuclei's opinion, not ours.
+        info = record.get("info") if isinstance(record.get("info"), dict) else {}
+        attrs = {"unverified_scanner_claim": "nuclei"}
+        template = record.get("template-id") or record.get("templateID")
+        if isinstance(template, str) and re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", template):
+            attrs["reported_template"] = template
+        severity = info.get("severity")
+        if isinstance(severity, str) and severity.lower() in (
+                "unknown", "info", "low", "medium", "high", "critical"):
+            attrs["reported_severity"] = severity.lower()
+        matched = record.get("matched-at") or record.get("matched") or record.get("host")
+        yield "url", _url(matched), record.get("method", ""), attrs
         return
     if source == "katana":
         req = record.get("request", {})

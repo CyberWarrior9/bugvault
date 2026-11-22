@@ -5,7 +5,7 @@ interrupted run resumes where it stopped. Jobs that need a louder mode than the 
 allows are marked `skipped` with the reason (visible in the report) and re-queued
 automatically if the campaign's mode is raised later.
 
-    domain   -> crtsh, wayback (passive) + host for the apex
+    domain   -> crtsh, wayback (passive), dnsresolve (active) + host for the apex
     host     -> probe (active)
     service  -> wellknown, jsharvest (active); runtime once a SPA is detected
     js       -> jsparse (active)
@@ -28,9 +28,12 @@ JOB_NEEDS = {
     "crtsh": "passive", "wayback": "passive",
     "probe": "active", "wellknown": "active", "jsharvest": "active",
     "jsparse": "active", "mapparse": "active", "runtime": "active", "jsretained": "active",
+    # Resolver-directed, not target-directed: bounded by the asset set, so it is
+    # allowed inside run(). Content fuzzers are not -- see recon/fuzz.py.
+    "dnsresolve": "active",
 }
 ON_NEW = {
-    "domain": ["crtsh", "wayback"],
+    "domain": ["crtsh", "wayback", "dnsresolve"],
     "host": ["probe"],
     "service": ["wellknown", "jsharvest"],
     "js": ["jsparse"],
@@ -178,6 +181,7 @@ class Recon:
             "jsharvest": active.job_jsharvest, "jsparse": active.job_jsparse,
             "mapparse": active.job_mapparse, "runtime": runtime.job_runtime,
             "jsretained": active.job_jsretained,
+            "dnsresolve": active.job_dnsresolve,
         }
         requeued = self.store.requeue(["skipped"], self.policy.allows)
         if requeued:

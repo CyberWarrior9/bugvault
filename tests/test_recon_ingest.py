@@ -214,7 +214,10 @@ class CatalogTests(unittest.TestCase):
         data = catalog()
         self.assertEqual(data["execution"]["llm_agents"], 0)
         self.assertEqual(data["execution"]["job_handlers"], len(JOB_NEEDS))
-        self.assertEqual(data["execution"]["scanner_import_adapters"], 5)
+        self.assertEqual(data["execution"]["scanner_import_adapters"], 10)
+        # bbot, subfinder, httpx, katana, scopesentry + dnsx, puredns, ffuf, feroxbuster,
+        # nuclei (added with `recon exec`; a template match imports as an unverified
+        # surface claim, never as a finding)
         root = Path(__file__).resolve().parents[1]
         for phase in data["phases"]:
             text = (root / phase["guide"]).read_text()

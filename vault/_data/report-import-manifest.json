@@ -16,6 +16,50 @@
     "source_records": 25384,
     "source_report_ids": 15434
   },
+  "enrichments": {
+    "h1corpus": {
+      "corpus_built_at": "2026-09-02T12:31:14.246279+00:00",
+      "corpus_path": "vault/_data/corpora/h1-corpus.sqlite3",
+      "corpus_schema_version": "1",
+      "corpus_sha256": "5fa395f5313766f558438b3a7504da9c95bacfa3b04c90d75a0f1fd925fc5751",
+      "counts": {
+        "class_agrees": 9785,
+        "class_differs": 2038,
+        "corpus_reports": 12447,
+        "gains_body": 9726,
+        "gains_cves": 1959,
+        "matched": 12428,
+        "out_of_engine_scope": 1430,
+        "rescued_unclassified": 1876,
+        "unmapped_class": 605,
+        "unmatched": 19
+      },
+      "importer": "scripts/import_h1_corpus.py",
+      "policy": {
+        "bodies": "not copied into the vault; stay in the SQLite, searchable via reports_fts",
+        "existing_class": "never overwritten; corpus label kept in h1corpus_* columns",
+        "out_of_engine_scope": {
+          "AI & LLM Security": "no class or skill exists",
+          "Denial of Service & Resource Exhaustion": "DoS is excluded from every hunt plan",
+          "Memory Safety & Native Code": "native/binary, not a web surface the engine maps",
+          "Social Engineering & Spoofing": "no technical surface to seed",
+          "Supply Chain & Dependencies": "no class or skill exists"
+        },
+        "payloads": "not copied; counted per report in h1corpus_payload_count",
+        "reproduction_status": "not-reproduced; a disclosed report is precedent, not evidence",
+        "unmapped_classes": "carried verbatim, never forced into a near-miss vault class"
+      },
+      "quarantine": {
+        "path": "_data/h1corpus-quarantine.jsonl",
+        "records": 19
+      },
+      "sidecar": {
+        "path": "_data/h1corpus-enrichment.csv",
+        "rows": 12428,
+        "sha256": "0ee457cfbf31a5d69a529478875e6dcdd9421b3cb9c119691d84589b3bfdbcf3"
+      }
+    }
+  },
   "importer": "scripts/import_report_index.py",
   "output": {
     "path": "_data/reports-merged.csv",

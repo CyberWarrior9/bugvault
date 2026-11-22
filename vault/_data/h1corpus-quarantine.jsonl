@@ -1,0 +1,19 @@
+{"id": "996576", "primary_class": "Access Control & IDOR", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/996576"}
+{"id": "2818009", "primary_class": "Other / Unclassified", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/2818009"}
+{"id": "2830573", "primary_class": "SQL & Data-Layer Injection", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/2830573"}
+{"id": "2855610", "primary_class": "Access Control & IDOR", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/2855610"}
+{"id": "3023605", "primary_class": "Denial of Service & Resource Exhaustion", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3023605"}
+{"id": "3048061", "primary_class": "Memory Safety & Native Code", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3048061"}
+{"id": "3083011", "primary_class": "Other / Unclassified", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3083011"}
+{"id": "3584078", "primary_class": "Information Disclosure & Privacy", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3584078"}
+{"id": "3589269", "primary_class": "HTTP Desync & Request Smuggling", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3589269"}
+{"id": "3726887", "primary_class": "Access Control & IDOR", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3726887"}
+{"id": "3737516", "primary_class": "Authentication, Sessions & MFA", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3737516"}
+{"id": "3765476", "primary_class": "Authentication, Sessions & MFA", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3765476"}
+{"id": "3781785", "primary_class": "Configuration & Hardening", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3781785"}
+{"id": "3793533", "primary_class": "Cross-Site Scripting", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3793533"}
+{"id": "3809973", "primary_class": "SQL & Data-Layer Injection", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3809973"}
+{"id": "3830771", "primary_class": "Cross-Site Scripting", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3830771"}
+{"id": "3839889", "primary_class": "Access Control & IDOR", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3839889"}
+{"id": "3839914", "primary_class": "Access Control & IDOR", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3839914"}
+{"id": "3873072", "primary_class": "SQL & Data-Layer Injection", "reason": "report id not present in reports-merged.csv", "url": "https://hackerone.com/reports/3873072"}
