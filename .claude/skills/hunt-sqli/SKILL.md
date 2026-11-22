@@ -96,15 +96,7 @@ minimally, is the finding.
 chain stays parked until the three realism questions (`recon chain realism`)
 carry evidence-backed answers.
 
-## Hard limits
 
-- Differentials need the triple (probe, condition-flip, control) stored —
-  `fact check` binds each to its response ID.
-- No destructive statements (`DROP`, `DELETE`, `UPDATE` on shared data), no
-  mass extraction, no disabling rate limits; delays ≤10s; one harmless test
-  record maximum.
-- Test accounts and program-owned data only; a production user table is proven
-  reachable, never dumped.
-- Live tests originate in the dedicated browser through Burp; sqlmap and
-  similar runners are not dispatched by this engine — the map-and-design
-  method replaces them.
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

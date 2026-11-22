@@ -1,4 +1,4 @@
-# Business-invariant / race acceptance ledger (2026-11-16)
+make # Business-invariant / race acceptance ledger (2026-11-16)
 
 This maps the *implemented checks*, not all promises in
 [`plan_buisneess_logic_race2.md`](../plan_buisneess_logic_race2.md#102-gate-a-validates-the-offline-model-cli-and-attribution).

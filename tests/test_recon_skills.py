@@ -29,7 +29,8 @@ AUTH_SKILLS = ["hunt-auth-bypass", "hunt-ato", "hunt-mfa-bypass", "hunt-oauth", 
 ORIGINAL_HUNT_SKILLS = ["hunt-ssrf", "hunt-idor", "hunt-xss", "hunt-sqli", "hunt-csrf", "hunt-ssti",
                          "hunt-access-control", "hunt-file-upload", "hunt-js-bundle",
                          "hunt-business-logic", "hunt-race-conditions", "hunt-takeover",
-                         "hunt-cloud-misconfig", "hunt-xxe", "hunt-graphql"]
+                          "hunt-cloud-misconfig", "hunt-xxe", "hunt-graphql", "hunt-http-smuggling",
+                           "hunt-cache", "hunt-rce", "hunt-security-misconfig"]
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", "h1_sample"}
 REPORT_INDEX = REPO / "vault" / "_data" / "reports-merged.csv"
 
@@ -107,7 +108,7 @@ class SkillFolderTests(unittest.TestCase):
         for entry in data["phases"] + data["hunt_skills"]:
             self.assertTrue((REPO / entry["guide"]).is_file(), entry["guide"])
         self.assertEqual(data["execution"]["skill_dir"], ".claude/skills")
-        self.assertEqual(data["execution"]["hunt_skills"], 20)
+        self.assertEqual(data["execution"]["hunt_skills"], 24)
         self.assertEqual({key for key, _ in HUNT_SKILLS},
                          set(AUTH_SKILLS) | set(ORIGINAL_HUNT_SKILLS))
         self.assertEqual(data["execution"]["capability_guides"], 8)
@@ -153,8 +154,8 @@ class SkillFolderTests(unittest.TestCase):
                 self.assertIn("not a substantial adaptation", source)
         data = catalog()
         self.assertEqual(data["execution"]["capability_guides"], 8)
-        self.assertEqual(data["execution"]["hunt_skills"], 20)
-        self.assertEqual(len(skill_dirs()), 28)
+        self.assertEqual(data["execution"]["hunt_skills"], 24)
+        self.assertEqual(len(skill_dirs()), 32)
 
 
 class JsSkillWiringTests(unittest.TestCase):

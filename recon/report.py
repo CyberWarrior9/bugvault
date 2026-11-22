@@ -449,6 +449,48 @@ def write_reports(ctx) -> List[Path]:
                  [[c["asset_id"], c["asset_value"], c["bug_class"], c["status"], c["note"]]
                   for c in cov if c["status"] != "untested"])]
 
+    # Bounded, sanitized review views; neither journal schedules any target work.
+    from .cache_review import CacheReview
+    from .http_review import HttpReview
+    cache_reviews = CacheReview(ctx).status(limit=50)
+    framing_reviews = HttpReview(ctx).status(limit=50)
+    from .rce import RceLedger
+    rce_reviews = RceLedger(ctx).status(limit=50)
+    cv += ["\n## Cache capture and isolation reviews\n",
+           "Offline captures, behavior/layer profiles and per-attempt isolation receipts. "
+           "Unknown facets do not inherit from neighboring routes. Source-supported is an "
+           "operator observation, not verified isolation or permission to prime a key. "
+           "Raw headers, query values and bodies remain in private evidence. "
+           f"Visible {cache_reviews['visible']}/{cache_reviews['total']}; "
+           f"truncated={cache_reviews['truncated']}.\n",
+           _table(["id", "kind", "origin", "method", "state", "integrity"],
+                  [[r["id"], r["kind"], r.get("origin", "-"), r.get("method", "-"),
+                    r.get("state", "observation-only"),
+                    "invalid/stale" if r["integrity_issues"] else "hashes-current"]
+                   for r in cache_reviews["rows"]]),
+           "\n## HTTP framing capture reviews\n",
+           "Local HTTP/1 lint only. Rejected framing does not establish parser disagreement, "
+           "connection reuse, a cross-request effect or request smuggling. No sender, "
+           "automatic finding or coverage closure is implemented. "
+           f"Visible {framing_reviews['visible']}/{framing_reviews['total']}; "
+           f"truncated={framing_reviews['truncated']}.\n",
+           _table(["id", "origin", "verdict", "issue codes", "integrity"],
+                  [[r["id"], r["origin"], r["verdict"], r["issues"],
+                    "invalid/stale" if r["integrity_issues"] else "hashes-current"]
+                   for r in framing_reviews["rows"]]),
+           "\n## RCE sink and owned-lab evidence reviews\n",
+           "Source-supported candidates are not proven reachable deployments; lab receipts "
+           "are only eligible for independent validator review, never target findings. "
+           "No traffic, payload generator or automatic coverage closure. "
+           f"Visible {rce_reviews['visible']}/{rce_reviews['total']}; "
+           f"truncated={rce_reviews['truncated']}.\n",
+           _table(["id", "kind", "family", "origin", "state/qualification", "integrity"],
+                  [[r["id"], r["kind"], r["family"], r["origin"],
+                    r.get("assessment", {}).get("assessment", "source-supported" if r.get("qualified")
+                                                     else "unqualified-lead"),
+                    "invalid/stale" if r["integrity_issues"] else "hashes-current"]
+                   for r in rce_reviews["rows"]])]
+
     # ---------------- intel.md
     intel = store.assets("intel")
     it = [f"---\ntags: [campaign, intel]\nprogram: {camp.program}\ngenerated: {ts}\n---\n",

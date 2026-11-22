@@ -319,7 +319,9 @@ class DeterministicLoopbackRaceTests(unittest.TestCase):
         impact = self.root / artifact(self.root, "b18-target-impact.txt",
                                       "owned synthetic value-delta minor 10")
         finding.move(fid, "confirmed", replay=replay_proof, control=control)
-        finding.move(fid, "impact-proven", impact=impact)
+        finding.move(fid, "impact-proven", impact=impact, poe_level=3,
+                    quote="owned synthetic value-delta minor 10", impact_kind="state-change",
+                    measurement="1 of 1 owned synthetic credits applied")
         replay = self.lab.exercise("b18replay", concurrent=True)
         env = self.lab_event("b18replay", replay, "replay", "observed", replay_of=trial["event_id"])
         env.update({"impact_tier": "T4", "chain_finding": fid,

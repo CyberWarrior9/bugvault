@@ -30,9 +30,7 @@ case families that apply to it, from a real browser initiator.
 
 ## Setup
 
-1. Read `scope-policy`. Confirm `csrf` is not in `excluded_bug_classes`. The victim
-   browser sends each action with its own method, so that method must be granted in
-   `policy.allowed_methods`. Live work runs in the dedicated browser through Burp,
+1. Live work runs in the dedicated browser through Burp,
    or through a path the campaign execution plan records.
 2. Two supplied test accounts: **V** (victim, signed in to the dedicated browser)
    and **A** (attacker). Every exercised change lands on V's own disposable data;
@@ -226,3 +224,7 @@ questions with `python3 -m recon chain realism` before impact.
 
 Sources, selections and corrections: [references/sources.md](references/sources.md).
 Record bundle reference: [references/evidence.md](references/evidence.md).
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

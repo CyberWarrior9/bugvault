@@ -9,10 +9,8 @@ metadata:
 
 # Hunt: schedule-dependent invariant effects
 
-Read `scope-policy` and program rules before target work. An owned resource, safe
-consequence, reviewed methods/budget and suitable channel are mandatory. No real
-money, users, guessing, overload, limiter avoidance, unsanctioned parallel client,
-blind mutation retry or silent HTTP/3/THREADED detour. The only C-P import lane is
+An owned resource, safe
+consequence, reviewed methods/budget and suitable channel are mandatory. The only C-P import lane is
 **operator-run** under a standing program plan: the operator, not the agent, fires
 the named gate. Agent-driven synchronization remains M6-blocked; ordinary Burp
 MCP tabs, Intruder preparation and concurrent browser fetches are not a gate.
@@ -57,3 +55,7 @@ Hand off object/field policy to `hunt-idor`/`hunt-access-control`, browser
 cross-site delivery to `hunt-csrf`, and value/sequence-only faults to
 `hunt-business-logic`. Read [evidence](references/evidence.md) and
 [sources](references/sources.md) before a claim.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

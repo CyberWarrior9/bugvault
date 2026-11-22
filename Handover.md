@@ -544,3 +544,105 @@ principals and canaries, exact operations/methods/channel, limits including
 cost and cleanup, a connected observer, and separate go/no-go approval. The
 working tree contains extensive prior unrelated uncommitted changes. No commit
 or push was made in this cloud work.
+
+## 2026-11-20 web cache poisoning/deception partial-implementation checkpoint
+
+The canonical plan is [plans/cache-deception-poisoning.md](plans/cache-deception-poisoning.md)
+(November 20 revision: restored authorized contract plus a *deeper active hunting —
+aggressive but bounded* annex; an earlier unrestricted rewrite of the plan found in
+the working tree was reverted to the committed version, with a backup kept outside
+the repo in the session temp folder). The first **offline** slice of delivery
+phases 2–3 is implemented: `recon/cache.py` (`recon cache record|show|status|verify`)
+keeps hash-bound `CP-01..06`/`CD-01..06` events bound to stored in-scope native
+responses with value-free cache-header fingerprints, campaign-local artifacts
+copied by SHA-256, fail-closed `cache.grants`/`cache.budget`/`rules_reviewed`
+gating for live-labelled receipts, and a `canary-proved` bar of six distinct
+control artifacts plus two owned markers (writes need before/after/cleanup).
+Wired: CLI verbs, catalog `hunt-cache` skill and Cache evidence ledger row,
+`recon/README.md` section, AGENTS.md bullet (**30 skills** now). Tests:
+`tests/test_recon_cache.py` (offline gates, dedupe, tamper, budget, staleness,
+CLI) and `tests/test_recon_cache_lab.py` (owned-loopback edge+origin fixture
+proving store/serve versus keyed/no-store controls for poison and deception,
+plus control-rejection and fail-closed config).
+
+**Not landed:** phase 1 raw HAR/Burp capture reader, `score.py` coverage seeding
+and `report.py` section (phase 4 wiring beyond catalog/skill/CLI/README), any
+browser/Burp live path, capture of per-attempt isolation audit fields beyond the
+event record, transformed-key (KT) case rows, and every live phase-5 step — the
+ledger sends nothing, primes or purges no shared cache and promotes no finding.
+No target, CDN or real cache was contacted.
+
+## 2026-11-20 offline/lab-only cache and framing extension
+
+This checkpoint supersedes the preceding cache checkpoint's missing-feature list.
+`recon/cache_review.py` now imports bounded local HAR, Burp XML/JSON and raw-pair
+captures into a separate journal with source/fidelity labels, repeated-header
+counts, body-completeness flags and capture/context-bound behavior/layer profiles.
+`cache isolation` records operator partition/control receipts, not proven isolation
+or traffic grants. New event artifacts and review artifacts are retained privately
+by SHA-256; original-file and retained-copy changes are checked. `cache record`
+also refuses an incomplete stored viewer body for `canary-proved`.
+
+`recon/http_review.py` implements `http-review inspect|show|status|verify`: local
+conservative HTTP/1 framing lint and immutable observation receipts. It does not
+compare target parser implementations, send malformed requests or establish
+smuggling. `recon/offline_review.py` shares bounded file/policy/hash handling.
+Both journals appear in sanitized, explicitly truncated coverage report tables.
+The HTTP loopback gate receives captures as JSON data and never forwards them;
+cache labs cover private non-storage and transformed versus distinct keys.
+
+Command formats and limits are in `docs/offline-cache-http-review.md`. Advanced
+attack-tree automation, complete consequence chaining, shared-channel traffic
+reservation, real CDN validation, live priming/purge and smuggling transport remain
+unimplemented. No external target/provider or live browser is involved.
+
+Verification for this extension: `.venv/bin/python -m unittest discover -s tests -v`
+(Python 3.9.6) ran **750 tests, all passed, 0 skipped**, including the optional
+owned-browser labs, with no ResourceWarning lines. System Python ran the same
+750 tests with 748 passed and two missing-Playwright skips; its existing resource
+warnings remain. The extension adds 31 tests over the earlier 719-test baseline.
+CLI/capture/profile/isolation paths, tamper/staleness, dependency checks, privacy
+projections, no-socket review paths and loopback controls were exercised. Local
+Markdown links and scoped `git diff --check` passed. No provider/model calls or
+skill-model A/B evaluation were run; deterministic tests do not certify model
+judgment, external cache semantics or desync exploitability.
+
+## 2026-11-20 RCE terminal-proof review: offline/owned-lab partial implementation
+
+The [RCE plan](plans/rce.md) now has a bounded P1/P3 offline slice:
+`recon rce declare|record|show|status|verify`, backed by `recon/rce.py`,
+`recon/execproof.py`, the `recon/cmdi.py` and `recon/deser.py` taxonomies and the
+shared `recon/offline_review.py` private hash/policy journal. Qualified exact
+in-scope operation/source graphs seed only `command-injection` or
+`deserialization` as **untested**, routed to `hunt-rce`. JS-only, inferred-hop,
+unmatched method or path, and client-only signatures remain unseeded leads.
+`rce` is still a terminal outcome, not host-wide coverage.
+
+The receipt assessor accepts only offline/owned-lab operator data and separates
+observed processing, callbacks, timing and parser errors from a narrowly
+syntactically reviewable lab bundle. Its ceiling is `eligible-for-validator`,
+**not** execution confirmed or a finding. A false actor label or fabricated
+worker log cannot be independently detected by this ledger; human validation
+of source, reachability, causality, authority and impact is essential. Sanitized
+origin/hash-only previews and paginated verification appear in `coverage.md`.
+Schema examples and hard limits are in
+`.claude/skills/hunt-rce/references/format.md` and `recon/README.md`.
+
+The focused tests include no-socket imports and owned-loopback inert response,
+reflection, deferred worker echo and parser-error contrasts. SSTI, upload, SSRF,
+finding and chain gates are unchanged. The P1 transitive dataflow/ranking and
+deployed-consumer checks are partial; P2 is a local discrimination fixture, not
+a generic RCE simulator; timing/receiver/second-hop automation, independent
+semantic validator, model skill evaluations, live receipts and P4/P5 handoff are
+not installed. P4 target execution remains blocked without written campaign
+approval and a connected observer. No target was contacted, no code-execution
+probe was run, and no finding was promoted.
+
+Local verification: `.venv/bin/python -m unittest discover -s tests -q` on
+Python 3.9.6 ran **772 tests, all passed, 0 skipped**; system Python 3.15.2
+ran the same **772 tests, 2 optional-browser skips, 0 failures**. System Python
+emitted existing unclosed-resource warnings and two expected negative CLI error
+lines; `.venv` did not emit resource warnings. New CLI, privacy, path/method
+isolation, source/receipt tamper, policy drift, stale snapshot and loopback
+false-positive cases passed. Local Markdown links and tracked `git diff --check`
+passed. A model judgment evaluation and real-target validation were not run.

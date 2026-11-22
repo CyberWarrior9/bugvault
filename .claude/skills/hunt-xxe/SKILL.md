@@ -146,3 +146,7 @@ have no chain target. Record them as notes on the sink rather than as an edge.
 See [references/sources.md](references/sources.md) for the source provenance and
 `plans/xxe.md` for the full build design, including the ledger module this skill
 does not yet have.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

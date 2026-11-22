@@ -14,13 +14,25 @@
   recall <campaign> <query> [--limit N]      offline row/import-linked lexical recall
   plan <campaign> [--asset-id ID]           export bounded context; no model calls
   plan <campaign> --proposal F [--apply]    validate external intents; optionally enqueue only
+  engagement init|status|categorise|debt|block-host|acknowledge-scope <campaign> --id ID
+                                               private offline checkpoint and debt reconciliation
+  push context|validate <campaign> --engagement ID [--manifest F] [--apply]
+                                               offline hunt-push review; no executor or traffic grant
+  operator ask|answer|withdraw|list|resume-input|status <campaign> --id ID ...
+                                               human queue for captcha/otp/2fa/lockout/environment
+                                               blocks; pauses only the asking intent, grants nothing
+  intent add|list|show|claim|renew|finish|fail|pause|resume|sweep|context|resume-input|status
+         <campaign> --id ID ...                one class x one surface push per intent, leased to
+                                               one worker; expired leases sweep back to open and
+                                               `exhausted` is a cut-off direction, not coverage
   responses <campaign> [--limit N]        list stored HTTP response IDs (offline)
   fact check|verify|list <campaign> ...    deterministic response-backed predicates
   cloud import|generate|sync|plan|show|record|status|verify <campaign> ...
                                               offline cloud leads, scoped hostname proposals
                                               and operator receipts; no provider executor
   ssrf plan|record|status|correlate <campaign> --asset-id ID ...   offline workflow/evidence
-  fields sync|show|record|canary|trace|matrix|na|claim|fingerprint|packet|payload|blind <campaign>
+  fields sync|show|record|canary|trace|matrix|na|claim|constraint|constraints|
+         surface-expect|surface-review|surfaces|fingerprint|packet|payload|blind <campaign>
                                               field ledger, canary map, trigger-matrix gate,
                                               context packets and blind-XSS correlation
   waf plan|observe|record|show <campaign>     per-host WAF/filter profiles (offline)
@@ -29,7 +41,13 @@
   chain status|add|realism <campaign> [--file F]  cross-class todolist/lineage + realism gate
   csrf sync|plan|record|status|verify <campaign>  CSRF action x context x case ledger (offline)
   ssti probes|surface|trace|fingerprint|plan|record|status|verify <campaign>  offline SSTI evidence
+  cache record|show|status|verify <campaign>     offline cache poisoning/deception evidence ledger
+  cache import|profile|isolation|reviews|review|verify-reviews <campaign>  offline capture review
+  http-review inspect|show|status|verify <campaign>  local HTTP/1 framing lint; no sender
+  rce declare|record|show|status|verify <campaign>  offline sink and owned-lab proof review
   authz sync|plan|record|status|verify <campaign>  offline access-control/MA workflow
+  authpolicy sync|declare|plan|record|derive|status|verify <campaign>
+                                               offline auth-policy exact-operation review
    upload sync|declare|plan|fixture|record|callback|cleanup|resume|status|verify <campaign>
                                               offline file-upload lifecycle ledger; inert fixtures only
    logic sync|declare|probe|observe|close|plan|record|cleanup|resume|status|verify <campaign>
@@ -37,6 +55,11 @@
                                               offline invariant/race evidence; no gate sender
   send <campaign> <url> [--method M] [--header 'K: V'] [--json J | --form k=v | --data D]
                                              one request through the scoped client; prints request_id
+  exec <campaign> --tool T --engagement ID --estimate N [--plan] -- <tool args>
+                                             one allowlisted external tool (httpx, katana, ffuf,
+                                             nuclei, dalfox, sqlmap) under the same scope, method,
+                                             pacing and campaign budget as `send`; the estimate is
+                                             pre-charged and never refunded
 
 <campaign> is a name under vault/10-Campaigns/ or a path to a folder with scope.json.
 """
@@ -302,12 +325,22 @@ def cmd_finding(a) -> int:
                                    detail={"lineage": [lineage]} if lineage else None)
             print(f"{'created' if created else 'exists'} finding #{fid} [lead]")
         elif a.action == "move":
+            measured = None
+            if a.data_impact:
+                measured = json.loads(Path(a.data_impact).read_text(encoding="utf-8"))
             f = fx.move(a.id, a.stage, note=a.note, severity=a.severity,
                         replay=Path(a.replay) if a.replay else None,
                         control=Path(a.control) if a.control else None,
                         impact=Path(a.impact) if a.impact else None,
-                        report=Path(a.report) if a.report else None)
-            print(f"finding #{f['id']} -> {f['stage']}")
+                        report=Path(a.report) if a.report else None,
+                        poe_level=a.poe_level, measurement=a.measurement,
+                        quote=a.quote, data_impact=measured, override=a.override,
+                        impact_kind=a.impact_kind)
+            print(f"finding #{f['id']} -> {f['stage']} (PoE {f['poe_level']}"
+                  f"{', ' + f['severity'] if f['severity'] else ''})")
+            if measured is not None:
+                from .dataimpact import summarise, validate
+                print(f"data impact: {summarise(validate(measured))}", file=sys.stderr)
         elif a.action == "link":
             new = fx.link(a.src, a.relation, a.dst, a.note)
             print(f"#{a.src} --{a.relation}-> #{a.dst} {'linked' if new else '(already linked)'}")
@@ -351,6 +384,124 @@ def cmd_plan(a) -> int:
             result = snapshot(ctx, a.asset_id or [])
         print(json.dumps(result, indent=2))
         return 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_engagement(a) -> int:
+    from .engagement import Engagement
+    ctx = _load(a.campaign)
+    try:
+        engagement = Engagement(ctx, a.id)
+        if a.action == "init":
+            data = engagement.init()
+        elif a.action == "status":
+            data = engagement.checkpoint()
+        elif a.action == "categorise":
+            data = engagement.categorise()
+        elif a.action == "debt":
+            data = engagement.reconcile()
+        elif a.action == "acknowledge-scope":
+            data = engagement.acknowledge_scope()
+        else:
+            data = engagement.block_host(a.response, a.reason, a.note or "")
+        print(json.dumps(data, indent=2))
+        return 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_push(a) -> int:
+    from .engagement import Engagement
+    from .push import context, review
+    ctx = _load(a.campaign)
+    try:
+        engagement = Engagement(ctx, a.engagement)
+        if a.action == "context":
+            result = context(ctx, engagement)
+        else:
+            result = review(ctx, Path(a.manifest), engagement, apply=a.apply)
+        print(json.dumps(result, indent=2))
+        return 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_operator(a) -> int:
+    from .operator import OperatorQueue
+    ctx = _load(a.campaign)
+    try:
+        queue = OperatorQueue(ctx, a.id)
+        if a.action == "ask":
+            data = queue.ask(a.intent, a.question, a.reason, a.screenshot or "")
+        elif a.action == "answer":
+            data = queue.answer(a.ref, a.text)
+        elif a.action == "withdraw":
+            data = queue.withdraw(a.ref, a.note or "")
+        elif a.action == "list":
+            data = {"entries": queue.entries(a.state or "")}
+        elif a.action == "resume-input":
+            data = {"intent": a.intent, "input": queue.resume_input(a.intent)}
+        else:
+            data = queue.status()
+        print(json.dumps(data, indent=2))
+        # A pending question is a blocked intent, not a failed command: exit 0 so a
+        # scheduler reads the JSON and skips that one intent. `resume-input` returns 2
+        # when there is no answered reply to resume with, so a caller cannot mistake
+        # an empty string for an answer.
+        if a.action == "resume-input" and not data["input"]:
+            return 2
+        return 0
+    finally:
+        ctx.store.close()
+
+
+def cmd_intent(a) -> int:
+    """The intent queue: one class x one surface push, leased to one worker.
+
+    Exit codes: 0 normal, 2 "nothing to do" — `claim` found no claimable intent, or
+    `resume-input` has nothing to continue with — so a scheduler can tell the
+    difference between an empty queue and a failure.
+    """
+    from .intents import IntentQueue
+    ctx = _load(a.campaign)
+    try:
+        queue = IntentQueue(ctx, a.id)
+        empty = False
+        if a.action == "add":
+            data = queue.add(a.summary, getattr(a, "class"), surface_ids=a.surface,
+                             parent_ids=a.parent, skill=a.skill or "")
+        elif a.action == "list":
+            data = {"intents": queue.intents(a.state or "")}
+        elif a.action == "show":
+            data = queue.get(a.intent)
+        elif a.action == "claim":
+            data = queue.claim(a.worker, ident=a.intent or 0)
+            empty = data is None
+            data = data or {"claimed": None, "note": "no claimable intent: all are "
+                                                     "running, waiting on a human, in "
+                                                     "backoff or finished"}
+        elif a.action == "renew":
+            data = queue.renew(a.intent, a.token)
+        elif a.action == "finish":
+            data = queue.finish(a.intent, a.token, a.state, a.note or "")
+        elif a.action == "fail":
+            data = queue.fail(a.intent, a.token, a.note or "")
+        elif a.action == "pause":
+            data = queue.pause(a.intent, a.note or "")
+        elif a.action == "resume":
+            data = queue.resume(a.intent, a.note or "")
+        elif a.action == "sweep":
+            data = queue.sweep()
+        elif a.action == "context":
+            data = queue.context(a.intent)
+        elif a.action == "resume-input":
+            data = {"intent": a.intent, "input": queue.resume_input(a.intent)}
+            empty = not data["input"]
+        else:
+            data = queue.status()
+        print(json.dumps(data, indent=2))
+        return 2 if empty else 0
     finally:
         ctx.store.close()
 
@@ -446,6 +597,18 @@ def cmd_fields(a) -> int:
             result = ledger.matrix(a.module)
         elif a.action == "diff":
             result = ledger.diff(a.module)
+        elif a.action == "constraint":
+            result = ledger.constraint(a.asset_id, a.method, a.location, a.field,
+                                       a.kind, a.value, a.source, a.source_ref, a.response)
+        elif a.action == "constraints":
+            result = ledger.constraints(a.asset_id)
+        elif a.action == "surface-expect":
+            result = ledger.expect_surface(a.asset_id, a.field, a.surface, a.case,
+                                           a.source_ref, a.reason, a.account, a.workflow)
+        elif a.action == "surface-review":
+            result = ledger.review_surface(a.expectation, a.state, a.note, a.response)
+        elif a.action == "surfaces":
+            result = ledger.surface_matrix(a.module)
         elif a.action == "na":
             result = ledger.set_na(a.module, a.trigger, a.reason)
         elif a.action == "claim":
@@ -487,6 +650,41 @@ def cmd_authz(a) -> int:
             result = ledger.status(a.limit)
         print(json.dumps(result, indent=2))
         return 0 if result.get("verified", result.get("integrity", {}).get("verified", True)) else 2
+    finally:
+        ctx.store.close()
+
+
+def cmd_authpolicy(a) -> int:
+    from .authpolicy import AuthPolicyLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = AuthPolicyLedger(ctx)
+        if a.action == "sync":
+            result = ledger.sync()
+        elif a.action == "declare":
+            result = ledger.declare(a.asset_id, a.url, a.method, a.entry_point,
+                                    a.source_ref, a.account, a.role, a.tenant,
+                                    a.workflow, a.representation)
+        elif a.action == "plan":
+            result = ledger.plan(a.operation, a.limit, a.offset)
+        elif a.action == "record":
+            refs = {}
+            for item in a.ref or []:
+                if ":" not in item:
+                    raise ValueError("--ref must be ROLE:stored-response-ID")
+                role, ident = item.rsplit(":", 1)
+                if role in refs or not ident.isdecimal():
+                    raise ValueError("--ref roles must be unique and IDs positive integers")
+                refs[role] = int(ident)
+            result = ledger.record(a.operation, a.case, a.state, refs, a.note, a.source)
+        elif a.action == "derive":
+            result = ledger.derive(a.file)
+        elif a.action == "verify":
+            result = ledger.verify(a.limit, a.offset)
+        else:
+            result = ledger.status(a.limit, a.offset)
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("verified", True) else 2
     finally:
         ctx.store.close()
 
@@ -631,6 +829,74 @@ def cmd_ssti(a) -> int:
         ctx.store.close()
 
 
+def cmd_cache(a) -> int:
+    from .cache import CacheLedger
+    from .cache_review import CacheReview
+    ctx = _load(a.campaign)
+    try:
+        ledger, review = CacheLedger(ctx), CacheReview(ctx)
+        if a.action == "import":
+            result = review.import_file(a.file, a.format, account=a.account, role=a.role,
+                                        tenant=a.tenant, workflow=a.workflow)
+        elif a.action in ("profile", "isolation"):
+            result = getattr(review, a.action)(a.file)
+        elif a.action == "review":
+            result = review.show(a.id)
+        elif a.action == "reviews":
+            result = review.status(a.kind, a.limit, a.offset)
+        elif a.action == "verify-reviews":
+            result = review.verify(a.limit, a.offset)
+        elif a.action == "record":
+            result = ledger.record_file(a.file)
+        elif a.action == "show":
+            result = ledger.show(a.reference)
+        elif a.action == "status":
+            result = ledger.status(a.limit)
+        else:
+            result = ledger.verify()
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("ok", True) else 2
+    finally:
+        ctx.store.close()
+
+
+def cmd_http_review(a) -> int:
+    from .http_review import HttpReview
+    ctx = _load(a.campaign)
+    try:
+        review = HttpReview(ctx)
+        if a.action == "inspect":
+            result = review.inspect(a.file, a.url, a.kind)
+        elif a.action == "show":
+            result = review.show(a.id)
+        else:
+            result = getattr(review, a.action)(a.limit, a.offset)
+        print(json.dumps(result, indent=2))
+        # Capture lint rejection is a recorded observation, not a failed import.
+        return 0 if result.get("ok", True) else 2
+    finally:
+        ctx.store.close()
+
+
+def cmd_rce(a) -> int:
+    from .rce import RceLedger
+    ctx = _load(a.campaign)
+    try:
+        ledger = RceLedger(ctx)
+        if a.action == "declare":
+            result = ledger.declare(a.file)
+        elif a.action == "record":
+            result = ledger.record(a.file)
+        elif a.action == "show":
+            result = ledger.show(a.id)
+        else:
+            result = getattr(ledger, a.action)(a.limit, a.offset)
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("ok", True) else 2
+    finally:
+        ctx.store.close()
+
+
 def cmd_waf(a) -> int:
     from .waf import WAFProfiles
     ctx = _load(a.campaign)
@@ -742,10 +1008,36 @@ def _send_body(a, max_bytes: int):
     return None, a.content_type
 
 
+def cmd_exec(a) -> int:
+    """One allowlisted external tool under recon's scope, methods, pacing and budget.
+
+    Exit codes: 0 launched and the tool exited cleanly (or --plan validated), 1 refused
+    before anything was launched, 2 launched but the tool failed or hit its time cap.
+    """
+    from .engagement import Engagement
+    from .toolexec import execute, prepare
+    ctx = _load(a.campaign)
+    try:
+        argv = list(a.args or [])
+        if argv and argv[0] == "--":
+            argv = argv[1:]
+        blocked = Engagement(ctx, a.engagement).blocked_hosts()
+        plan = prepare(ctx, a.tool, argv, a.estimate, blocked=blocked)
+        if a.plan:
+            print(json.dumps(plan, indent=2))
+            return 0
+        record = execute(ctx, plan, engagement=a.engagement, import_output=not a.no_import)
+        print(json.dumps(record, indent=2))
+        return 0 if record.get("exit_code") == 0 else 2
+    finally:
+        ctx.store.close()
+
+
 def cmd_send(a) -> int:
     """One request through ScopedClient: scope, method grant, rate, budgets, pinned egress."""
     import hashlib
     from .net import FetchError
+    from .untrusted import frame
     ctx = _load(a.campaign)
     try:
         method = a.method.upper()
@@ -768,12 +1060,16 @@ def cmd_send(a) -> int:
         else:
             resp = ctx.client.request(method, a.url, a.purpose, body=body, content_type=content_type,
                                       headers=headers or None)
+        # The response body is the target's text and this output goes straight into a
+        # model's context, so the preview is handed over nonce-framed as data.
+        preview = resp.body[:a.show_body].decode("utf-8", "replace")
         print(json.dumps({
             "request_id": resp.request_id, "method": method, "url": resp.url, "status": resp.status,
             "redirect_chain": resp.redirect_chain, "blocked_redirect": resp.blocked_redirect,
             "headers": resp.headers, "body_bytes": len(resp.body),
             "body_sha256": hashlib.sha256(resp.body).hexdigest(), "truncated": resp.truncated,
-            "body_preview": resp.body[:a.show_body].decode("utf-8", "replace")}, indent=2))
+            "body_preview": frame(preview, "target-response", label=resp.url) if preview else ""},
+            indent=2))
         print(f"evidence: python3 -m recon fact check {a.campaign} --response {resp.request_id} "
               "--predicate '<JSON>'", file=sys.stderr)
         return 0
@@ -785,6 +1081,9 @@ def cmd_send(a) -> int:
 
 
 def main(argv=None) -> int:
+    from .intents import STATES
+    from .operator import REASONS
+    from .toolexec import PROFILES
     p = argparse.ArgumentParser(prog="python3 -m recon", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -957,7 +1256,7 @@ def main(argv=None) -> int:
     s.add_argument("--no-searchsploit", action="store_true")
     s.add_argument("--refresh", action="store_true", help="explicitly retry cached/suppressed intel providers")
     s.set_defaults(fn=cmd_lookup)
-    from .findings import RELATIONS, SEVERITIES, STAGES
+    from .findings import IMPACT_KINDS, POE_LEVELS, RELATIONS, SEVERITIES, STAGES
     s = sub.add_parser("finding", help="finding lifecycle: add | move | link | list")
     fsub = s.add_subparsers(dest="action", required=True)
     f = fsub.add_parser("add")
@@ -977,6 +1276,26 @@ def main(argv=None) -> int:
     for opt in ("--replay", "--control", "--impact", "--report", "--note"):
         f.add_argument(opt)
     f.add_argument("--severity", choices=SEVERITIES)
+    f.add_argument("--poe-level", type=int, choices=POE_LEVELS, dest="poe_level",
+                   help="0 nothing · 1 error/timing/variation · 2 structural manipulation · "
+                        "3 data extracted or action performed · 4 critical impact demonstrated; "
+                        "impact-proven needs 3 or 4")
+    f.add_argument("--measurement",
+                   help="the impact as a number with a denominator (\"3 of 40 ids returned "
+                        "another tenant's rows\"), or \"not measurable: <reason>\"")
+    f.add_argument("--quote",
+                   help="verbatim string from the impact artifact, headers included, that "
+                        "shows the result")
+    f.add_argument("--data-impact", dest="data_impact",
+                   help="JSON file measuring what the primitive yields: reachable, sampled, "
+                        "enumeration, classes, subjects, redacted fingerprints. Required for a "
+                        "data-exposure class and for PoE 4 — reach is not impact")
+    f.add_argument("--impact-kind", dest="impact_kind", choices=IMPACT_KINDS,
+                   help="what the finding demonstrates. Defaults to data-exposure for a "
+                        "data class, which then requires --data-impact; declare another "
+                        "kind when the impact is an action rather than data")
+    f.add_argument("--override",
+                   help="reason a severity above the computed ceiling is nonetheless right")
     f = fsub.add_parser("link")
     f.add_argument("campaign")
     f.add_argument("src", type=int)
@@ -1002,6 +1321,94 @@ def main(argv=None) -> int:
     s.add_argument("--proposal", help="external JSON proposal to validate")
     s.add_argument("--apply", action="store_true", help="enqueue validated known jobs; never execute them")
     s.set_defaults(fn=cmd_plan)
+    s = sub.add_parser("engagement", help="private offline engagement state, category deltas and debt")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("init", "status", "categorise", "debt", "block-host", "acknowledge-scope"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--id", required=True, help="private engagement slug")
+        if action == "block-host":
+            f.add_argument("--response", type=int, required=True, help="stored target response ID")
+            f.add_argument("--reason", required=True,
+                           choices=("429", "challenge", "lockout", "unexpected-effect", "cleanup"))
+            f.add_argument("--note", default="")
+    s.set_defaults(fn=cmd_engagement)
+    s = sub.add_parser("push", help="offline hunt-push manifest review; no model or sender")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("context", "validate"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--engagement", required=True, help="existing private engagement slug")
+        if action == "validate":
+            f.add_argument("--manifest", required=True)
+            f.add_argument("--apply", action="store_true", help="record offline review receipt only")
+    s.set_defaults(fn=cmd_push)
+    s = sub.add_parser("operator", help="offline human queue; pauses only the asking intent "
+                                        "and never grants scope, methods or budget")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("ask", "answer", "withdraw", "list", "resume-input", "status"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--id", required=True, help="private engagement slug")
+        if action == "ask":
+            f.add_argument("--intent", required=True, help="the blocked intent's ref")
+            f.add_argument("--question", required=True,
+                           help="exactly what the operator must supply or do; for an "
+                                "environment block, the one copy-pastable command")
+            f.add_argument("--reason", required=True, choices=REASONS)
+            f.add_argument("--screenshot", default="",
+                           help="optional image already inside the engagement directory")
+        elif action == "answer":
+            f.add_argument("--ref", type=int, required=True)
+            f.add_argument("--text", required=True, help="the operator's reply; data, not a grant")
+        elif action == "withdraw":
+            f.add_argument("--ref", type=int, required=True)
+            f.add_argument("--note", default="")
+        elif action == "list":
+            f.add_argument("--state", default="", choices=("", "pending", "answered", "withdrawn"))
+        elif action == "resume-input":
+            f.add_argument("--intent", required=True)
+    s.set_defaults(fn=cmd_operator)
+
+    s = sub.add_parser("intent", help="offline intent queue: one class x one surface push, "
+                                       "leased to one worker; scheduling only, never coverage")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("add", "list", "show", "claim", "renew", "finish", "fail",
+                   "pause", "resume", "sweep", "context", "resume-input", "status"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--id", required=True, help="private engagement slug")
+        if action == "add":
+            f.add_argument("--summary", required=True,
+                           help="the target, the action and why it is worth pushing")
+            f.add_argument("--class", required=True, dest="class",
+                           help="coverage bug class; routes the hunt skill to load")
+            f.add_argument("--surface", action="append", default=[],
+                           help="surface reference, e.g. ep-118; repeatable")
+            f.add_argument("--parent", action="append", default=[],
+                           help="fact or finding this follows from; repeatable")
+            f.add_argument("--skill", default="",
+                           help="override the routed skill; an unrouted class uses `explore`")
+        elif action == "list":
+            f.add_argument("--state", default="", choices=("",) + STATES)
+        elif action == "claim":
+            f.add_argument("--worker", required=True, help="worker id taking the lease")
+            f.add_argument("--intent", type=int, default=0,
+                           help="claim this intent specifically, if it is claimable")
+        elif action in ("show", "context", "resume-input"):
+            f.add_argument("--intent", type=int, required=True)
+        elif action in ("renew", "finish", "fail"):
+            f.add_argument("--intent", type=int, required=True)
+            f.add_argument("--token", required=True, help="the lease token from `claim`")
+            f.add_argument("--note", default="")
+            if action == "finish":
+                f.add_argument("--state", required=True, choices=("done", "exhausted", "stopped"),
+                               help="`exhausted` is a cut-off direction, not coverage")
+        elif action in ("pause", "resume"):
+            f.add_argument("--intent", type=int, required=True)
+            f.add_argument("--note", default="")
+    s.set_defaults(fn=cmd_intent)
+
     s = sub.add_parser("responses", help="offline list of stored response IDs and capture completeness")
     s.add_argument("campaign")
     s.add_argument("--limit", type=int, default=20)
@@ -1101,6 +1508,40 @@ def main(argv=None) -> int:
     f.add_argument("campaign")
     f.add_argument("--module", required=True)
     f = actions.add_parser("diff", help="value-free, context-safe sent versus declared names")
+    f.add_argument("campaign")
+    f.add_argument("--module", required=True)
+    from .fields import CONSTRAINT_KINDS, CONSTRAINT_SOURCES, SURFACE_CASES
+    f = actions.add_parser("constraint", help="declare a sourced rule claim; no server-enforcement inference")
+    f.add_argument("campaign")
+    f.add_argument("--asset-id", type=int, required=True)
+    f.add_argument("--method", choices=sorted(HTTP_METHODS), required=True)
+    f.add_argument("--location", choices=LOCATIONS, required=True)
+    f.add_argument("--field", required=True)
+    f.add_argument("--kind", choices=CONSTRAINT_KINDS, required=True)
+    f.add_argument("--value", required=True, help="declared rule only; never a submitted secret")
+    f.add_argument("--source", choices=CONSTRAINT_SOURCES, required=True)
+    f.add_argument("--source-ref", required=True)
+    f.add_argument("--response", type=int, help="stored rejection response for server-rejection claim")
+    f = actions.add_parser("constraints")
+    f.add_argument("campaign")
+    f.add_argument("--asset-id", type=int, required=True)
+    f = actions.add_parser("surface-expect", help="declare an expected field x render x case")
+    f.add_argument("campaign")
+    f.add_argument("--asset-id", type=int, required=True)
+    f.add_argument("--field", required=True)
+    f.add_argument("--surface", required=True)
+    f.add_argument("--case", choices=SURFACE_CASES, required=True)
+    f.add_argument("--source-ref", required=True)
+    f.add_argument("--reason", required=True)
+    f.add_argument("--account", default="")
+    f.add_argument("--workflow", default="")
+    f = actions.add_parser("surface-review", help="link a canary-captured render, or justify n-a")
+    f.add_argument("campaign")
+    f.add_argument("--expectation", type=int, required=True)
+    f.add_argument("--state", choices=("reviewed", "n-a", "blocked", "inconclusive"), required=True)
+    f.add_argument("--note", required=True)
+    f.add_argument("--response", type=int)
+    f = actions.add_parser("surfaces")
     f.add_argument("campaign")
     f.add_argument("--module", required=True)
     f = actions.add_parser("na", help="record an n-a trigger cell with a reason")
@@ -1241,6 +1682,43 @@ def main(argv=None) -> int:
     f = actions.add_parser("verify")
     f.add_argument("campaign")
     s.set_defaults(fn=cmd_authz)
+    s = sub.add_parser("authpolicy", help="offline auth-policy operations, rule contrasts and receipts")
+    actions = s.add_subparsers(dest="action", required=True)
+    from .authpolicy import ENTRY_CASES, STATES as AUTH_POLICY_STATES
+    f = actions.add_parser("sync", help="inventory already-seen methods and contexts; no requests")
+    f.add_argument("campaign")
+    f = actions.add_parser("declare", help="declare an exact existing in-scope operation")
+    f.add_argument("campaign")
+    f.add_argument("--asset-id", type=int, required=True)
+    f.add_argument("--url", required=True, help="exact endpoint without token-bearing query")
+    f.add_argument("--method", choices=sorted(HTTP_METHODS), required=True)
+    f.add_argument("--entry-point", choices=tuple(ENTRY_CASES), required=True)
+    f.add_argument("--source-ref", required=True)
+    for name in ("account", "role", "tenant", "workflow", "representation"):
+        f.add_argument("--" + name, default="unknown")
+    for action in ("plan", "status"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--limit", type=int, default=100)
+        f.add_argument("--offset", type=int, default=0)
+        if action == "plan":
+            f.add_argument("--operation", type=int)
+    f = actions.add_parser("record", help="label stored response contrasts; never promotes a finding")
+    f.add_argument("campaign")
+    f.add_argument("--operation", type=int, required=True)
+    f.add_argument("--case", required=True, help="exact case key from authpolicy plan, including rule hash")
+    f.add_argument("--state", choices=AUTH_POLICY_STATES, required=True)
+    f.add_argument("--ref", action="append", help="ROLE:stored-response-ID (repeatable)")
+    f.add_argument("--note", required=True, help="bounded value-free label; never cookies/tokens")
+    f.add_argument("--source", choices=("import", "native", "browser-burp", "owned-lab"), default="import")
+    f = actions.add_parser("derive", help="transient structural sample analysis, never stores values")
+    f.add_argument("campaign")
+    f.add_argument("--file", required=True, help="mode 0600 campaign-relative .recon/private/auth-policy/ JSON")
+    f = actions.add_parser("verify", help="recheck hashes, scope, policy and evidence references")
+    f.add_argument("campaign")
+    f.add_argument("--limit", type=int, default=100)
+    f.add_argument("--offset", type=int, default=0)
+    s.set_defaults(fn=cmd_authpolicy)
     s = sub.add_parser("upload", help="offline file-upload lifecycle ledger and inert fixtures; no traffic")
     actions = s.add_subparsers(dest="action", required=True)
     from .upload import (CALLBACK_KINDS, CASES as UPLOAD_CASES, CHANNELS, CLEANUP_OUTCOMES,
@@ -1371,6 +1849,76 @@ def main(argv=None) -> int:
     f = actions.add_parser("verify", help="rehash every stored capture and artifact reference")
     f.add_argument("campaign")
     s.set_defaults(fn=cmd_ssti)
+    s = sub.add_parser("cache", help="offline cache poisoning/deception evidence ledger; "
+                                      "no priming, purge or cache executor")
+    actions = s.add_subparsers(dest="action", required=True)
+    f = actions.add_parser("record", help="append one hash-bound cache event from a "
+                                          "campaign-relative schema-1 JSON file")
+    f.add_argument("campaign")
+    f.add_argument("--file", required=True, help="campaign-relative event JSON")
+    f = actions.add_parser("show", help="stored-response snapshot plus its cache events")
+    f.add_argument("campaign")
+    f.add_argument("--reference", type=int, required=True, help="stored request ID")
+    f = actions.add_parser("status")
+    f.add_argument("campaign")
+    f.add_argument("--limit", type=int, default=25)
+    f = actions.add_parser("verify", help="rehash events, artifacts and referenced stored responses")
+    f.add_argument("campaign")
+    f = actions.add_parser("import", help="read a local HAR/Burp export or raw-pair manifest; no replay")
+    f.add_argument("campaign")
+    f.add_argument("--file", required=True)
+    f.add_argument("--format", choices=("har", "burp-xml", "burp-json", "raw-pair"), required=True)
+    for name in ("account", "role", "tenant", "workflow"):
+        f.add_argument("--" + name, default="unknown")
+    for action in ("profile", "isolation"):
+        f = actions.add_parser(action, help="record a campaign-local schema-1 review declaration")
+        f.add_argument("campaign")
+        f.add_argument("--file", required=True)
+    f = actions.add_parser("review", help="sanitized capture/profile/isolation review by journal ID")
+    f.add_argument("campaign")
+    f.add_argument("--id", type=int, required=True)
+    for action in ("reviews", "verify-reviews"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--limit", type=int, default=100)
+        f.add_argument("--offset", type=int, default=0)
+        if action == "reviews":
+            f.add_argument("--kind", choices=("capture", "profile", "isolation"))
+    s.set_defaults(fn=cmd_cache)
+    s = sub.add_parser("http-review", help="offline conservative HTTP/1 framing lint; "
+                                           "not a smuggling detector or raw transport")
+    actions = s.add_subparsers(dest="action", required=True)
+    f = actions.add_parser("inspect", help="inspect one captured message without forwarding it")
+    f.add_argument("campaign")
+    f.add_argument("--file", required=True, help="campaign-relative raw HTTP/1 file")
+    f.add_argument("--url", required=True, help="capture origin/target attribution, never fetched")
+    f.add_argument("--kind", choices=("request", "response"), default="request")
+    f = actions.add_parser("show")
+    f.add_argument("campaign")
+    f.add_argument("--id", type=int, required=True)
+    for action in ("status", "verify"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--limit", type=int, default=100)
+        f.add_argument("--offset", type=int, default=0)
+    s.set_defaults(fn=cmd_http_review)
+    s = sub.add_parser("rce", help="offline source-qualified sink and owned-lab evidence review; "
+                                 "no payloads, traffic or finding promotion")
+    actions = s.add_subparsers(dest="action", required=True)
+    for action in ("declare", "record"):
+        f = actions.add_parser(action, help="import a campaign-relative schema-1 " +
+                               ("sink declaration" if action == "declare" else "evidence receipt"))
+        f.add_argument("campaign")
+        f.add_argument("--file", required=True)
+    f = actions.add_parser("show")
+    f.add_argument("campaign")
+    f.add_argument("--id", required=True, type=int)
+    for action in ("status", "verify"):
+        f = actions.add_parser(action)
+        f.add_argument("campaign")
+        f.add_argument("--limit", type=int, default=100)
+        f.add_argument("--offset", type=int, default=0)
+    s.set_defaults(fn=cmd_rce)
     s = sub.add_parser("import-burp", help="offline Burp XML/JSON export or raw request import; "
                                            "header/cookie names only, values never stored")
     s.add_argument("campaign")
@@ -1400,6 +1948,26 @@ def main(argv=None) -> int:
     s.add_argument("--no-follow", action="store_true", help="GET/HEAD: return a 3xx instead of following it")
     s.add_argument("--show-body", type=int, default=2000, help="response bytes to print (0..100000)")
     s.set_defaults(fn=cmd_send)
+
+    s = sub.add_parser("exec", help="run one allowlisted external tool under recon's scope, "
+                                     "methods, pacing and shared campaign budget")
+    s.add_argument("campaign")
+    s.add_argument("--tool", required=True, choices=sorted(PROFILES),
+                   help="allowlisted tool profile; direct invocation stays refused")
+    s.add_argument("--engagement", required=True,
+                   help="engagement id the run is charged to; its blocked hosts are enforced")
+    s.add_argument("--estimate", type=int, required=True,
+                   help="declared request estimate, pre-charged to the campaign budget and "
+                        "never refunded; it also sets the wall-clock cap")
+    s.add_argument("--plan", action="store_true",
+                   help="validate scope, methods, flags and budget and print the plan; launch nothing")
+    s.add_argument("--no-import", action="store_true",
+                   help="keep the artifact but skip the offline surface import")
+    # `--` is required before the tool's own flags: without it argparse would read
+    # them as recon's, and a REMAINDER positional would swallow recon's own options.
+    s.add_argument("args", nargs="*",
+                   help="after --, the tool's own arguments (rate, output and cap flags are injected)")
+    s.set_defaults(fn=cmd_exec)
     a = p.parse_args(argv)
     try:
         return a.fn(a)

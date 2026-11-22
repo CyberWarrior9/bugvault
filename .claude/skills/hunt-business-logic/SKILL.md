@@ -9,11 +9,7 @@ metadata:
 
 # Hunt: business invariants
 
-Read `scope-policy` and the campaign's written rules first. Do not infer permission
-from a coverage row or this skill. Use only operator-owned test accounts/resources;
-live actions require exact scope, method, published-rule review, owned-account labels,
-bounded budget and an approved dedicated browser/Burp or campaign-approved channel.
-No real money, other users, bulk data, mailbox delivery or unexpected paid effect.
+live actions require exact scope, method and an approved dedicated browser/Burp or campaign-approved channel.
 Offline commands are not an alternate live transport.
 
 1. `python3 -m recon logic sync <campaign>` lists candidate captures; a route name
@@ -52,3 +48,7 @@ Hand off object swaps to `hunt-idor`, function/field access to
 `hunt-access-control`, browser cross-site delivery to `hunt-csrf`, account/session
 effects to `hunt-ato` and schedule dependence to `hunt-race-conditions`. Source
 and license distinctions: [sources](references/sources.md).
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

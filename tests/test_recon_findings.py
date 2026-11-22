@@ -153,8 +153,15 @@ class FindingTests(unittest.TestCase):
         self.assertEqual(cov[(self.asset, "idor-bola")], "confirmed")
         with self.assertRaises(StageError):
             self.fx.move(fid, "impact-proven")  # needs --impact
+        # impact-proven now also needs PoE >= 3, a measurement with a denominator, a
+        # verbatim quote found in the artifact, and — for a data-exposure class — a
+        # measurement of how much of what is reachable (recon/dataimpact.py).
         self.fx.move(fid, "impact-proven", impact=self.art("i.txt", "PII of 3 users"),
-                     severity="high")
+                     severity="high", poe_level=3, quote="PII of 3 users",
+                     measurement="3 of 40 order ids returned another tenant's rows",
+                     data_impact={"reachable": 40, "sampled": 3, "enumeration": "complete",
+                                  "classes": {"pii": 3},
+                                  "subjects": ["name, email and address of 3 other customers"]})
         self.fx.move(fid, "reported")
         self.fx.move(fid, "duplicate", note="dup of #123456")
         with self.assertRaises(StageError):

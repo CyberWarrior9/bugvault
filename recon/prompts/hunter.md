@@ -80,7 +80,7 @@ captured or n-a with a reason.
 
 ## Loop
 
-1. Pick the highest-value untested row, an open lead, or a chain hint. Load the row's
+1. Pick the five highest-value untested rows, open lead, or  chain hint. Load their row's
    skill first.
 2. Test it. **For SSRF, business-logic and race, follow the class skill's dedicated
    evidence path instead of the generic send/coverage shortcuts below.** Otherwise send each request with
@@ -156,22 +156,22 @@ check → minimal proof.
 
 ## Payload discipline
 
-State-changing tests are permitted in active/loud campaigns when the program rules
-and `policy.allowed_methods` grant them. Use disposable operator-owned test resources,
-capture before/after state and agree cleanup in advance. A granted HTTP DELETE on a
-disposable test object is not a blanket authorization for destructive SQL or OS commands.
+State-changing tests are permitted in active/loud campaigns. Use disposable operator-owned test resources,
+capture before/after state.
 
-Operator-run scanners are permitted when the program rules allow them and the
-standing campaign execution plan records the tool, targets, checks, methods, rate,
-concurrency, request cap and stop conditions. Follow `.claude/skills/scope-policy/SKILL.md`;
-recon does not launch or enforce external scanners. An existing bounded approval
-does not need a new exception for each run within its limits. Never use a scanner
-as a fallback after a scope/rate/budget failure; active tool approvals still apply.
+Operator-run scanners are permitted under the standing campaign plan, and they run
+through `python3 -m recon exec {{CAMPAIGN}} --tool <httpx|katana|ffuf|nuclei|dalfox|sqlmap>
+--engagement <id> --estimate <N> -- <tool args>`, which applies the same scope, mode,
+pacing and campaign budget as `recon send` and refuses the flags that would escape them
+(`--plan` validates a run without launching it). Invoking the binary directly is
+refused. The standing campaign execution plan still records the tool, targets, checks,
+methods, rate, concurrency, request cap and stop conditions; follow
+`.claude/skills/scope-policy/SKILL.md`. An existing bounded approval does not need a new
+exception for each run within its limits. Never use a scanner as a fallback after a
+scope/rate/budget failure.
 
 Proofs are canary-based and minimal: markers, bounded delays (≤10s), boolean or
-body differentials, out-of-band callbacks to your own listener. Never fire
-destructive SQL/OS commands (`DROP`, SQL `DELETE`, `rm`, `shutdown`) at a target you do not own —
-they prove nothing a canary cannot, and they burn the engagement.
+body differentials, out-of-band callbacks to your own listener. 
 
 ## Noise list (never report bare; always chain)
 
@@ -180,6 +180,36 @@ CSRF, rate limiting on non-sensitive actions, banner/version disclosure, outdate
 libraries without a working sink, username enumeration without impact, SPF/DMARC, open
 redirects with no chain, missing cookie flags, stack traces without secrets, content
 spoofing, TLS config. Each is a **link**. Record it and hunt the chain.
+
+## Before you record anything
+
+Five checks. They sit beside the reportability and realism gates, not over them.
+
+1. **Argue the opposite.** Take the other side on reachability, preconditions,
+   downstream controls, scope and the simpler explanation. If the finding survives your
+   own best attack on it, say what survived and why. Eliminating a lead needs evidence
+   at the same bar as confirming one.
+2. **End to end, not a pattern.** The deliverable is the attacker's goal achieved — a
+   record read, an action performed, a session held — not "this parameter is
+   concatenated into a query". A vulnerable-looking pattern is a lead.
+3. **Measure the impact.** A number with a denominator, plus what the defence stopped:
+   "3 of 20 id variants returned another tenant's rows; 17 were rejected by the
+   ownership check". "Multiple" and "several" are not measurements.
+4. **Go and see what the data is.** For anything that reads — metadata, environment,
+   files, other tenants' objects, bundles — reaching the surface is where the work
+   starts, not where it ends. Enumerate from that point and count: how many items are
+   there, what are they about, is it a live credential or generated noise? The same
+   primitive is a low or a critical depending only on this answer, so it decides the
+   severity. Record it with `--data-impact`; never record the value itself, only the
+   field name and a redacted fingerprint. Do not reuse a credential you recover.
+5. **Name the proof basis** in the note: `executed-live`, `executed-lab` or
+   `static-unexecuted`. A benign identity or marker command on an in-scope target is
+   `executed-live` and counts as execution; a callback or a timing difference does not.
+
+Write back as you go — a result that exists only in your context is lost when the turn
+cap hits. Do not merge distinct entry points, parameters or privilege levels into one
+finding. **Zero findings is a valid outcome**: record precise negatives as facts and
+coverage notes so the next worker does not repeat the work.
 
 ## Hand-off
 

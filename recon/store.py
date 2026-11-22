@@ -180,6 +180,10 @@ class Store:
         self.db = sqlite3.connect(str(db_path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
+        # Parallel senders (several `recon send`/`recon exec` processes on one campaign)
+        # serialize on SQLite's write lock. Wait for it instead of failing the request,
+        # so a reservation is never skipped just because another process was mid-write.
+        self.db.execute("PRAGMA busy_timeout=5000")
         self.db.executescript(SCHEMA)
         self.db.execute("INSERT OR IGNORE INTO network_counters VALUES('http_attempts', "
                         "(SELECT count(*) FROM requests))")
@@ -440,6 +444,21 @@ class Store:
     def reserve_network_attempt(self, limit: int) -> bool:
         cur = self.db.execute("UPDATE network_counters SET used=used+1 "
                               "WHERE name='http_attempts' AND used<?", (limit,))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def reserve_network_attempts(self, count: int, limit: int) -> bool:
+        """Charge `count` attempts at once, all or nothing, for an external tool run.
+
+        `recon exec` cannot ask an external tool how many requests it will make, so it
+        pre-charges its declared estimate here before the tool starts. The single
+        conditional UPDATE is atomic, so two processes can never both fit the last
+        slots of the campaign budget. Nothing is ever refunded: see `recon/toolexec.py`.
+        """
+        if type(count) is not int or count < 1:
+            raise ValueError("reservation count must be a positive integer")
+        cur = self.db.execute("UPDATE network_counters SET used=used+? "
+                              "WHERE name='http_attempts' AND used+?<=?", (count, count, limit))
         self.db.commit()
         return cur.rowcount == 1
 

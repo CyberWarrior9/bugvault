@@ -112,11 +112,7 @@ injection on unauthenticated surface → authed IDOR/mass-assignment matrix →
 business-logic races. Untested surface (old API versions, unreferenced endpoints,
 archive deltas) outranks well-lit surface. Testedness score sorts the queue.
 
-## Standing limits (program survival, not politeness)
 
-No denial of service, no social engineering, no real-user data beyond minimum proof,
-own test accounts only, no destructive tokens (`DROP`, `rm`, `shutdown`). These keep
-the authorization alive. An operator who burns the program hunts nothing.
 
 ## Where things live
 

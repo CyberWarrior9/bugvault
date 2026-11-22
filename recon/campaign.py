@@ -71,6 +71,21 @@ def validate_authz(raw: Any) -> Dict[str, Any]:
     return result
 
 
+def validate_auth_policy(raw: Any) -> Dict[str, Any]:
+    """Owned labels for offline auth-policy receipts, never a traffic grant."""
+    if not isinstance(raw, dict) or set(raw) - {"owned_accounts", "policy_reviewed", "_help"}:
+        raise ConfigError("auth_policy has unknown keys")
+    owned = raw.get("owned_accounts", [])
+    if not isinstance(owned, list) or len(owned) > 10 or len(set(map(str, owned))) != len(owned) or any(
+            not isinstance(v, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,79}", v)
+            for v in owned):
+        raise ConfigError("auth_policy.owned_accounts needs at most ten owned account labels")
+    reviewed = _reviewed(raw.get("policy_reviewed", ""), "auth_policy.policy_reviewed")
+    if owned and not reviewed:
+        raise ConfigError("auth_policy.owned_accounts need policy_reviewed")
+    return {"owned_accounts": tuple(owned), "policy_reviewed": reviewed}
+
+
 def validate_upload(raw: Any) -> Dict[str, Any]:
     """Fail-closed hunt-file-upload ledger labels copied from the program's published rules.
 
@@ -208,6 +223,25 @@ def validate_cloud(raw: Any) -> Dict[str, Any]:
         raise ConfigError("cloud.budget must be 0..100000 declared requests")
     if grants and (not reviewed or budget == 0):
         raise ConfigError("cloud evidence grants require a rules review and positive budget")
+    return {"rules_reviewed": reviewed, "grants": grants, "budget": budget}
+
+
+def validate_cache(raw: Any) -> Dict[str, Any]:
+    """Cache evidence labels; NOT grants for priming, purging or scanner traffic.
+
+    Exact cache variants, owned A/V contexts, origins, TTL/purge handling and
+    execution approval still come from the program rules and a private run plan.
+    """
+    if not isinstance(raw, dict) or set(raw) - {"rules_reviewed", "grants", "budget", "_help"}:
+        raise ConfigError("cache accepts rules_reviewed, grants and budget only")
+    reviewed = _reviewed(raw.get("rules_reviewed", ""), "cache.rules_reviewed")
+    from .cache import GRANTS
+    grants = _labels(raw.get("grants", []), "cache.grants", GRANTS)
+    budget = raw.get("budget", 0)
+    if type(budget) is not int or not 0 <= budget <= 100_000:
+        raise ConfigError("cache.budget must be 0..100000 declared requests")
+    if grants and (not reviewed or budget == 0):
+        raise ConfigError("cache evidence grants require a rules review and positive budget")
     return {"rules_reviewed": reviewed, "grants": grants, "budget": budget}
 
 
@@ -515,10 +549,12 @@ class Campaign:
             raise ConfigError(f"{cfg_path}: {e}")
         scope = Scope.from_lists(raw.get("in_scope", []), raw.get("out_of_scope", []))
         validate_authz(raw.get("authz", {}))
+        validate_auth_policy(raw.get("auth_policy", {}))
         validate_upload(raw.get("upload", {}))
         validate_business_logic(raw.get("business_logic", {}))
         validate_race(raw.get("race", {}))
         validate_cloud(raw.get("cloud", {}))
+        validate_cache(raw.get("cache", {}))
         from .takeover import validate_config as validate_takeover
         try:
             validate_takeover(raw.get("takeover", {}))
@@ -607,6 +643,9 @@ def scope_template(program: str, seeds: List[str], mode: str,
         "in_scope": in_scope,
         "out_of_scope": ["/logout", "/signout"],
         "rules": [],
+        "auth_policy": {"policy_reviewed": "", "owned_accounts": [],
+                        "_help": "Owned test-account labels and written-rule review date for offline "
+                                 "auth-policy receipts only; not target traffic permission."},
         "_rules_help": "Paste the program's testing rules, one per line; they are copied "
                        "verbatim into the agent briefs (python3 -m recon brief).",
         "excluded_bug_classes": [],

@@ -12,6 +12,19 @@ from .skillmap import SKILLS_DIR_REL, SKILLS_FOR_CLASS
 ARTEX_COMMIT = "9bf5d816aeb361d79de874fcdbeeb0de31bd83f2"
 # Hunting skills (same folder as the phase guides). Coverage classes come from SKILLS_FOR_CLASS.
 HUNT_SKILLS = (
+    ("hunt-security-misconfig", "Security configuration and auth-policy review: per-entry-point "
+                               "server validation, token/session invalidation, rate limits, "
+                               "clickjacking and NTLM/ASP.NET exposure; owned-account proofs only"),
+    ("hunt-rce", "Offline RCE terminal-proof review for source-supported command/argument "
+                 "and deserialization sink candidates, with lab evidence controls; "
+                 "no target executor, payload library or finding promotion"),
+    ("hunt-http-smuggling", "HTTP boundary/desync evidence review: operator-designated coverage, "
+                            "parser/connection attribution, matched controls and owned effects; "
+                            "offline HTTP/1 framing lint available; no raw transport, scanner "
+                            "or target executor; lint is not parser-disagreement proof"),
+    ("hunt-cache", "Web cache poisoning/deception: offline hash-bound evidence ledger over "
+                   "stored scoped responses, per-attempt isolation records and owned-lab "
+                   "store/serve controls; no priming, purge, cache executor or finding promotion"),
     ("hunt-cloud-misconfig", "Cloud references and exact-operation evidence: offline extraction/triage, "
                               "operator receipts and integrity checks; no cloud API, SDK, guessing, "
                               "credential validation, impact executor or finding promotion"),
@@ -85,6 +98,9 @@ PHASES = (
 
 # All entries are explicit about integration, not merely names that happen to be in PATH.
 TOOLS = (
+    ("RCE sink/proof review", None, "native-offline", "hunt-rce",
+     "recon rce declare/record/show/status/verify: exact source-supported candidates, "
+     "hash-bound lab receipts, conservative validator eligibility; no execution or scanner"),
     ("Cloud candidate/evidence ledger", None, "native-offline", "hunt-cloud-misconfig",
      "recon cloud import/generate/sync/plan/show/record/status/verify: stored-source references, "
      "bounded in-scope hostname proposals and "
@@ -117,6 +133,19 @@ TOOLS = (
     ("Chain todolist", None, "native-offline", "inventory-handoff", "recon chain status/add: cross-class ready/waiting/proven steps over findings and validated custom chains; orders the hunt, executes nothing"),
     ("CSRF action ledger", None, "native-offline", "hunt-csrf", "recon csrf sync/plan/record/status/verify: per-origin action x context x case inventory with facet-scoped reopening, hash-bound browser-attempt artifacts and coarse-coverage conflict listing; sends no traffic, runs no browser or scanner"),
     ("SSTI evidence ledger", None, "native-offline", "hunt-ssti", "recon ssti probes/surface/trace/fingerprint/plan/record/status/verify: inert arithmetic probes, raw response/artifact classification, independent surface controls and grant-gated cred-read/token-use/lateral evidence; no target traffic, credential use, lateral action or exploit executor"),
+    ("Cache evidence ledger", None, "native-offline", "hunt-cache",
+     "recon cache record/show/status/verify: hash-bound poisoning/deception events bound to "
+     "stored scoped responses with value-free cache-header fingerprints, fail-closed "
+     "live-channel grants and a shared declared budget; canary-proved needs six distinct "
+     "control artifacts and two owned markers; no cache priming, purge, executor or finding promotion"),
+    ("Cache capture review", None, "native-offline", "hunt-cache",
+     "recon cache import/profile/isolation/reviews/review/verify-reviews: bounded local HAR, "
+     "Burp and raw-pair census; behavior/layer profiles and operator isolation receipts; "
+     "private immutable artifacts, paginated sanitized reports, no replay or confirmed semantics"),
+    ("HTTP framing review", None, "native-offline", "hunt-http-smuggling",
+     "recon http-review inspect/show/status/verify: conservative local HTTP/1 capture lint "
+     "with hash-bound evidence and a loopback JSON review gate; not a desync detector, "
+     "parser-differential engine, payload generator or malformed-traffic sender"),
     ("Authorization case ledger", None, "native-offline", "hunt-access-control",
      "recon authz sync/plan/record/status/verify and fields diff: exact-context candidate inventory, "
      "fail-closed offline grants, hash-bound operator evidence and coarse conflicts; no traffic or automatic finding"),
@@ -185,6 +214,11 @@ def catalog() -> Dict[str, Any]:
                                           "advertise .claude/skills in sessions inside this repository "
                                           "and the model loads one when a task matches its description",
                       "manual_request_executor": "recon send (scope, method grant, rate, budgets, pinned egress)",
+                      "external_tool_executor": "recon exec (same scope/method/budget enforcement for "
+                                                "6 allowlisted tool profiles; estimate pre-charged and "
+                                                "never refunded; direct binary invocation refused)",
+                      "intent_queue": "recon intent (offline leases, sweep, terminal states, resume); "
+                                      "scheduling only, starts no worker",
                       "model_routing": "not implemented; no model-provider calls"},
         "artex_topology": {"planner": 1, "default_workers": 3, "ongoing_instances_default": 4,
                            "goals_decomposer": "one-shot additional call",

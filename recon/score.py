@@ -20,7 +20,7 @@ INTERNAL = re.compile(r"admin|internal|debug|staff|employee|backoffice|manage|co
                       r"export|import|backup|restore|batch|bulk|webhook|callback|migrat|"
                       r"impersonat|sudo|actuator|metrics|health|swagger|openapi|graphiql", re.I)
 AUTH_PATH = re.compile(r"login|signin|sign-in|signup|register|password|passwd|reset|forgot|"
-                       r"otp|mfa|2fa|totp|verif|session|token|oauth|authorize|sso|saml|"
+                       r"otp|mfa|2fa|totp|verif|session|token|logout|signout|oauth|authorize|sso|saml|"
                        r"change-?email|email/change|recover", re.I)
 MONEY = re.compile(r"(?<![a-z0-9])(?:pay|checkout|orders?|carts?|coupons?|promos?|vouchers?|"
                    r"redeem|gifts?|transfer|withdraw|balances?|wallets?|credits?|refunds?|"
@@ -29,6 +29,8 @@ MONEY = re.compile(r"(?<![a-z0-9])(?:pay|checkout|orders?|carts?|coupons?|promos
 RENDER = re.compile(r"export|report|pdf|render|preview|screenshot|thumbnail|convert|print",
                     re.I)
 UPLOAD = re.compile(r"upload|import|avatar|attachment|/files?(?:/|$)|media|image", re.I)
+SECURITY_SURFACE = re.compile(r"(?:^|/)(?:\.env(?:\.|$)|\.git(?:/|$)|config(?:\.|/)|"
+                              r"actuator(?:/|$)|debug(?:/|$)|[^/]+\.(?:bak|old|backup)$)", re.I)
 URLISH = {"url", "uri", "link", "href", "src", "redirect", "redirect_uri", "redirect_url",
           "redirecturl", "return", "returnto", "return_to", "returnurl", "return_url", "next",
           "continue", "dest", "destination", "target", "callback", "callback_url", "webhook",
@@ -162,6 +164,15 @@ def applicable_classes(e: Dict[str, Any]) -> Dict[str, str]:
     methods = {m.upper() for m in a.get("methods", []) if m}
     writes = methods & {"POST", "PUT", "PATCH", "DELETE"}
     out: Dict[str, str] = {}
+    # Explicit operator review only: banners/H2 support do not prove a parser pair.
+    if a.get("http_smuggling_review") is True:
+        out["http-smuggling"] = ("operator-designated HTTP boundary review; "
+                                 "topology and parser disagreement unverified")
+    # Explicit operator review only: no cache header, CDN fingerprint or asset path
+    # proves shared-cache keying/eligibility; the row marks a designated review.
+    if a.get("cache_review") is True:
+        out["cache"] = ("operator-designated shared-cache review; keying, eligibility "
+                        "and layer unverified")
     if a.get("id_params") or "{id}" in path:
         out["idor-bola"] = "object identifiers in path/params"
     if a.get("api_like") and not out.get("idor-bola"):
@@ -206,12 +217,17 @@ def applicable_classes(e: Dict[str, Any]) -> Dict[str, str]:
             out["csrf"] = f"GET/unknown-method action with a state-change signal: {(verbs + selectors)[:4]}"
     if AUTH_PATH.search(path):
         out["ato"] = "auth/account flow"
+        out["security-misconfiguration"] = ("auth entry-point security-policy review; "
+                                             "weak policy alone is not a confirmed finding")
         if re.search(r"otp|mfa|2fa|totp|verif", path):
             out["mfa-bypass"] = "second-factor flow"
         if re.search(r"oauth|authorize|sso|openid", path):
             out["oauth"] = "OAuth/OIDC flow"
         if "saml" in path:
             out["saml"] = "SAML flow"
+    if a.get("security_review") is True or SECURITY_SURFACE.search(path):
+        out["security-misconfiguration"] = ("operator-designated/config-exposure posture review; "
+                                             "verify exact response and consequence")
     selectors = [str(v) for k in ("graphql_ops", "selectors", "actions") for v in a.get(k, [])
                  if isinstance(v, str)]
     selectors += [str(a.get("selector", ""))]

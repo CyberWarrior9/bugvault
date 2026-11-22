@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(python3 -m recon *)",
+      "Bash(python3 -m unittest *)",
+      "mcp__burp__get_proxy_http_history",
+      "mcp__burp__get_proxy_http_history_regex",
+      "mcp__burp__get_proxy_websocket_history",
+      "mcp__burp__get_proxy_websocket_history_regex",
+      "mcp__burp__get_organizer_items",
+      "mcp__burp__get_organizer_items_regex",
+      "mcp__burp__get_scanner_issues",
+      "mcp__burp__get_active_editor_contents",
+      "mcp__burp__url_encode",
+      "mcp__burp__url_decode",
+      "mcp__burp__base64_encode",
+      "mcp__burp__base64_decode",
+      "mcp__burp__generate_random_string",
+      "mcp__burp__send_http1_request",
+      "mcp__burp__send_http2_request",
+      "mcp__burp__send_to_intruder",
+      "mcp__burp__create_repeater_tab",
+      "mcp__burp__create_repeater_tab_http2",
+      "mcp__burp__set_task_execution_engine_state",
+      "mcp__burp__set_proxy_intercept_state",
+      "mcp__burp__set_project_options",
+      "mcp__burp__set_user_options",
+      "mcp__burp__set_active_editor_contents",
+      "mcp__burp__output_project_options",
+      "mcp__burp__output_user_options",
+      "mcp__burp__generate_collaborator_payload",
+      "mcp__burp__get_collaborator_interactions"
+    ],
+    "deny": [
+      "Bash(nuclei *)",
+      "Bash(httpx *)",
+      "Bash(ffuf *)",
+      "Bash(sqlmap *)",
+      "Bash(dalfox *)",
+      "Bash(katana *)",
+      "Bash(bbot *)",
+      "Bash(feroxbuster *)",
+      "Bash(subfinder *)",
+      "Read(**/.recon/private/**)"
+    ]
+  }
+}

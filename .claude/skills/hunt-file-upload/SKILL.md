@@ -20,7 +20,7 @@ stage your artifacts show.
 
 ## Before any live upload
 
-Read `scope-policy` and the program's published rules. The ledger's live gates are
+The ledger's live gates are
 `program_url` plus `upload.rules_reviewed` (the date you reviewed those rules),
 `policy.mode` active or loud, the sink's method in `policy.allowed_methods`, the
 case's family in `upload.case_grants`, and a positive `upload.budget`. That one
@@ -101,19 +101,7 @@ unknown is not no. Artifacts are copied by SHA-256 under `.recon/upload-evidence
   `hunt-access-control`. Proven code execution is the `execution` route, never
   relabelled access control. The validator decides what is reportable.
 
-## Hard limits
 
-- No server-interpretable or executable content, web or reverse shells, malware,
-  active documents, polyglots, archive bombs or configuration-override uploads.
-  This workflow does not generate filter-evasion variants or execution payloads.
-- No large files to cross a live size limit, no storage filling, no high-rate or
-  timing experiments; live `size-boundary` attempts stay at or below 4096 bytes.
-- No traversal, overwrite or metacharacter filenames on live targets. Archive
-  escape, process-argument, inclusion, XML-parser and quota questions are review
-  or owned-lab work.
-- Never touch other users' objects or guess identifiers; use supplied test
-  accounts only.
-- Third-party or unapproved receivers are out. A DNS or HTTP callback is contact,
-  not execution, an internal read or exfiltration.
-- `impact-demonstrated` makes an event eligible for validator review. It never
-  confirms or promotes a finding.
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

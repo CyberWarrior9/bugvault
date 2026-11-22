@@ -1,3 +1,4 @@
+
 # BugVault — Autonomous Bug-Hunting Knowledge Base & Platform Plans
 
 An authorized bug-bounty hunting knowledge system: a git-versioned Obsidian vault

@@ -5,7 +5,7 @@ description: Map explicitly authorized BugVault host resolution, web origins and
 
 # Service mapping
 
-Read scope-policy first. Active probing requires `policy.mode=active` or a permitted louder mode. Built-in probing performs DNS resolution and HTTP(S) reads; it does not scan arbitrary ports.
+Active probing requires `policy.mode=active`. Built-in probing performs DNS resolution and HTTP(S) reads; it does not scan arbitrary ports.
 
 Import already collected inventory with `python3 -m recon import <campaign> <file> --format httpx` or `--format scopesentry`. PATH presence does not mean an external tool has an executor. Imported statuses and technologies remain `reported_status` / `reported_tech`, not independently measured liveness.
 

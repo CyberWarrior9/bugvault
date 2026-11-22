@@ -29,24 +29,22 @@ Hand off by flow: SAML → `hunt-saml`, OAuth/OIDC → `hunt-oauth`, second fact
 
 ## Before the first request
 
-1. Read `scope-policy`. Confirm the program's written rules allow authentication testing
-   and that the class is not listed in `excluded_bug_classes`.
-2. Create two test accounts you control, following the program's rules: **A** (attacker)
+1. Create two test accounts you control, following the program's rules: **A** (attacker)
    and **V** (victim), one pair per role you need. Put a unique marker in V's profile,
    for example display name `canary_ato_<8 random chars>`, so reading V's data is provable.
-3. Log in as A and as V yourself in a normal browser, export HAR, and import each:
+2. Log in as A and as V yourself in a normal browser, export HAR, and import each:
    `python3 -m recon import-har <campaign> a.har --account A --role member`.
-4. Login, OTP and reset submissions usually use POST; account APIs may also use PUT,
-   PATCH or DELETE. When the program permits all these methods, set
+3. Login, OTP and reset submissions usually use POST; account APIs may also use PUT,
+   PATCH or DELETE. Set
    `policy.allowed_methods` in `scope.json` to
    `["GET", "HEAD", "POST", "PUT", "PATCH", "OPTIONS", "DELETE"]` and mode to
-   `active` or `loud`. Remove any method the program forbids. OPTIONS is not a mutation,
+   `active` or `loud`.OPTIONS is not a mutation,
    but still needs an explicit active-testing grant. PUT/DELETE tests use disposable
-   resources owned by A or V, never real users' data. See `scope-policy` for init flags.
-5. Send every test with `python3 -m recon send`. It enforces scope, the method grant, the
+   resources owned by A or V.
+4. Send every test with `python3 -m recon send`. It enforces scope, the method grant, the
    campaign rate limit (across processes), request budgets and pinned egress, and stores
    each response as evidence with a `request_id`. Do not use curl or scripts with their
-   own HTTP client: they bypass every one of those controls.
+   own HTTP client until  `python3 -m recon send` is available.
 
 ## Sub-classes, most frequent first
 
@@ -106,7 +104,7 @@ Request header values (cookies, tokens) are sent but never written to the campai
 database; response bodies and request bodies are stored as evidence under the
 campaign's private `.recon/` directory. Use dedicated test-account passwords.
 
-## JWT tests (your own tokens only)
+## JWT tests 
 
 Decode A's token (header and claims are base64url JSON) and send each variant to an
 endpoint that returns account data:
@@ -157,14 +155,6 @@ Weak password policy; concurrent sessions allowed; email enumeration on signup (
 2FA required only after the first login (by design); a missing login rate limit without
 a demonstrated takeover. Record them as leads when they can become chain links.
 
-## Hard limits
-
-- Only accounts you own. Never log in as, guess, stuff or spray credentials for anyone
-  else's account.
-- Bounded attempts within the program's rate rules. Stop at the first lockout, CAPTCHA or
-  429 and record it: that response is the rate-limit control.
-- No IP rotation or proxies to evade limits; `recon/net.py` refuses proxies.
-- Minimum data: once V's marker is proven, stop reading.
 
 ## Reference cases (in BugVault's report index)
 
@@ -187,3 +177,7 @@ lists $5,000 for #219205 and $3,000 for #143482, which no indexed source confirm
 `service-mapping` (subdomain-takeover leads that feed SSO and OAuth chains) ·
 `captured-auth-mapping` (HAR imports for A and V). Gates: `recon/prompts/validator.md`
 and `vault/00-Engine/doctrine.md`.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

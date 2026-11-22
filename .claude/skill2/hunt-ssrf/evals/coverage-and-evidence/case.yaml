@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: coverage-and-evidence
+expected_outcome: |
+  Refuse false completeness and reflection-as-readback; distinguish contexts and
+  filtered callbacks, retain evidence and gate deeper branches rather than report.

@@ -12,7 +12,110 @@ Runnable Python 3.9+ recon foundation, extending the existing BugVault engine. D
 | External artifact adapters | **5 scanner formats + HAR** | BBOT events, ScopeSentry sync and live traffic extension |
 | Model routing | Not implemented | Agent bindings/fallbacks configurable |
 
-**All 26 BugVault skills live in one folder: `.claude/skills/<id>/SKILL.md`** at the repository root — eight recon phase guides plus eighteen hunting skills: five authentication skills (`hunt-auth-bypass`, `hunt-ato`, `hunt-mfa-bypass`, `hunt-oauth`, `hunt-saml`), `hunt-ssrf`, `hunt-idor`, `hunt-xss`, `hunt-sqli`, `hunt-csrf`, `hunt-ssti`, `hunt-access-control`, `hunt-file-upload`, `hunt-js-bundle`, `hunt-business-logic`, `hunt-race-conditions`, `hunt-takeover` and `hunt-cloud-misconfig`. OpenCode and Claude Code discover that folder automatically in sessions opened inside this repository and offer a skill to the model when a task matches its description; verified with OpenCode 2.2.6, where a fresh session given a login `ato` row and asked to load the applicable skill, without being told its name, chose and loaded `hunt-auth-bypass`. The recon engine itself loads no skill. Qwen/GLM/OpenAI review agents are **not running**; credentials, endpoints, model IDs and a separate bounded review adapter would be required.
+**All 32 BugVault skills live in one folder: `.claude/skills/<id>/SKILL.md`** at the repository root — eight recon phase guides plus twenty-four hunting skills: five authentication skills (`hunt-auth-bypass`, `hunt-ato`, `hunt-mfa-bypass`, `hunt-oauth`, `hunt-saml`), `hunt-security-misconfig`, `hunt-ssrf`, `hunt-idor`, `hunt-xss`, `hunt-sqli`, `hunt-csrf`, `hunt-ssti`, `hunt-access-control`, `hunt-file-upload`, `hunt-js-bundle`, `hunt-business-logic`, `hunt-race-conditions`, `hunt-takeover`, `hunt-cloud-misconfig`, `hunt-xxe`, `hunt-graphql`, `hunt-http-smuggling`, `hunt-cache` and `hunt-rce`. OpenCode and Claude Code discover that folder automatically in sessions opened inside this repository and offer a skill to the model when a task matches its description; verified with OpenCode 2.2.6, where a fresh session given a login `ato` row and asked to load the applicable skill, without being told its name, chose and loaded `hunt-auth-bypass`. The recon engine itself loads no skill. Qwen/GLM/OpenAI review agents are **not running**; credentials, endpoints, model IDs and a separate bounded review adapter would be required.
+
+### Engagement orchestrator: offline foundation only
+
+`recon engagement init|status|categorise|debt|block-host|acknowledge-scope`
+keeps a private checkpoint under `<campaign>/.recon/engagements/<id>/`,
+labels asset deltas from SQLite changes, and reconciles coverage, field-matrix
+and reachable chain frontiers into durable debt. For example:
+
+```bash
+python3 -m recon engagement init acme --id review-1
+python3 -m recon engagement categorise acme --id review-1
+python3 -m recon engagement debt acme --id review-1
+python3 -m recon push context acme --engagement review-1
+python3 -m recon push validate acme --engagement review-1 --manifest batch-01.json
+```
+
+The separate push manifest has a **full absolute URL and exact method**; class,
+skill, predicate, asset/scope/budget snapshots, debt references and summed
+request budget are validated before any review receipt is written. `--apply`
+records a private, non-executing receipt only. A stored 429 may be recorded
+with `engagement block-host --response ID --reason 429`, which defers that host
+from push validation. No automatic resume, model dispatch, target executor,
+hourly 5,000-request pool, browser signup, CVE sync or unattended skill editing
+exists. The existing campaign/request limits remain mandatory and are not reset
+by the engagement checkpoint. See [`plans/orchestrator.md`](../plans/orchestrator.md).
+
+### Auth-policy: exact offline cases, no login tester
+
+`recon authpolicy sync|declare|plan|record|derive|status|verify` keeps exact
+scoped operation × method × account/role/tenant/workflow/representation cases
+under the existing `security-misconfiguration` class. `sync` inventories only
+already-captured or asset-declared methods; `record` links labelled contrasts to
+stored responses and rechecks their hashes on `verify`. Password cases split
+by sourced field × rule kind/value; an undeclared rule cannot be marked observed.
+Its `observed` label is
+not server-side proof, a confirmed finding or a traffic grant. Declare owned test
+account labels and a written-rule review date under `scope.json`'s `auth_policy`;
+this still does not grant a method or authorize a browser/Burp/native request.
+The stock `out_of_scope` excludes logout/signout until the program rules are
+explicitly reviewed. `derive` reads only a private mode-0600 sample input and
+stores coarse structure, never raw tokens or a claimed prediction.
+
+`recon fields constraint|constraints` records client/spec/operator/server-rejection
+**claims** with separate provenance. `surface-expect|surface-review|surfaces`
+gates *declared* field × render × case pairs on a captured matching canary
+response or justified n-a. Unvisited surfaces remain open; an empty declared
+surface inventory is unknown. `engagement debt` adds unresolved `auth-case` and
+`surface` items; `push validate` ties auth debt to its exact URL/method. There is
+no auto-extraction of client rules, semantic auth validator, live replay, token
+predictor, browser controller or finding promotion. See
+[`plans/orchestrator.md`](../plans/orchestrator.md) §23.1.
+
+### HTTP request smuggling: skill-only review
+
+`hunt-http-smuggling` reviews request-boundary and desync evidence with exact
+protocol/route/connection context, matched negative and benign positive controls,
+fresh replay, owned effects and cleanup. The explicit boolean endpoint asset
+attribute `http_smuggling_review=true` seeds an untested `http-smuggling` row;
+ordinary CDN banners and HTTP/2 support do not. No automatic topology collector,
+smuggling CLI, ledger, config grant, payload generator or raw transport exists.
+The ordinary scoped client is not a byte-exact smuggling transport. Offline
+review does not authorize live probing: a separate operator-approved plan must
+cover isolated pools, exact targets/methods, shared accounting and owner-verified
+reset. Timing/status anomalies and scanner issues remain leads, not findings.
+
+### RCE terminal-proof review: partial offline/owned-lab slice
+
+[`hunt-rce`](../.claude/skills/hunt-rce/SKILL.md) and `recon rce` support a
+private, hash-bound review journal for exact source-supported
+`command-injection`/`deserialization` candidates and operator-supplied lab
+receipts. `rce` remains a terminal outcome, **not** a host-wide coverage row.
+JS-only, inferred-only, unmatched-method or unobserved route candidates stay
+unseeded leads; a qualified exact endpoint seeds its candidate class as
+`untested` only. The ledger does not inspect source code semantically or establish
+that the claimed server sink is deployed/reachable.
+
+```bash
+python3 -m recon rce declare acme --file evidence/rce-sink.json
+python3 -m recon rce record acme --file evidence/rce-lab-receipt.json
+python3 -m recon rce show acme --id 1
+python3 -m recon rce status acme --limit 50 --offset 0
+python3 -m recon rce verify acme --limit 100 --offset 0
+```
+
+The [schema-1 format](../.claude/skills/hunt-rce/references/format.md) names an
+input, operation, account/role/tenant/workflow, direct or inferred graph edges,
+worker and sink, each with a campaign-local artifact. `record` accepts only
+`offline` and `owned-lab` receipts. The assessor demands a distinct lab replay,
+complete effect/baseline/control captures, owned actor/worker/object binding,
+ordered attempt times and syntactic marker contrasts for
+`eligible-for-validator`; callback, delay, parser error, upload processing or
+SSTI arithmetic cannot meet that bar. This is **not proof of execution**: the
+operator can supply wrong labels, synthetic logs or a benign transformation that
+meets byte checks. A human validator must examine actual source, authorization,
+causality, replay and impact under the program rules. The journal never creates
+or advances a finding. `status` and the coverage report show bounded sanitized
+pages; `verify` rehashes originals, retained copies and policy on each page.
+
+No payload generator, scanner, native/Burp live receipt import, target traffic,
+execution test, shared budget reservation, receiver enforcement or automatic
+P4 handoff is implemented. P4 remains blocked without specific written campaign
+approval and a connected observer. The existing SSTI, upload, SSRF and finding
+gates remain unchanged. See [`plans/rce.md`](../plans/rce.md) for remaining work.
 
 ### Cloud misconfiguration: partial offline slice
 
@@ -106,10 +209,70 @@ simulation, not real cloud, DNS, TLS or browser verification. See
 [`plans/subdomain-takeover.md`](../plans/subdomain-takeover.md) for acceptance and
 explicit follow-ons, and the skill references for JSON schemas and chain gates.
 
+### Web cache poisoning/deception: offline evidence ledger
+
+`recon cache record|show|status|verify` keeps hash-bound poisoning (`CP-01..06`) and
+deception (`CD-01..06`) events. Every event binds one **stored, in-scope native
+response** (exact URL/path/query-hash/method/status/body-hash plus a value-free
+fingerprint of cache-relevant headers; raw header values are never copied into event
+data) and optional campaign-local artifacts copied by SHA-256. `show` prints the
+response snapshot and its events; `verify` re-hashes events, artifacts and the
+referenced stored bodies and exits 2 on drift or staleness.
+
+```bash
+python3 -m recon responses acme --limit 20
+python3 -m recon cache show acme --reference 12
+python3 -m recon cache record acme --file evidence/cache-event.json
+python3 -m recon cache status acme
+python3 -m recon cache verify acme
+```
+
+`canary-proved` needs six distinct-hash control artifacts (`baseline`, `test`,
+`replay`, `cross-viewer`, `negative-control`, `positive-control`) and two distinct
+owned markers, with the marker present in proof receipts, absent from baseline and
+controls, and the control marker present in both controls; writes additionally need
+`before`/`after`/`cleanup` receipts. Live-labelled channels (`native` with one
+stored request ID per declared send, `burp` with distinct source-labelled refs)
+additionally require `program_url`, `rules`, `cache.rules_reviewed`, a matching
+`cache.grants` entry, non-passive mode, an allowed method and a positive shared
+`cache.budget` the ledger refuses to exceed. These gates record operator
+assertions; the ledger sends nothing, primes or purges no shared cache, rotates no
+viewers and promotes no finding. `canary-proved` is a receipt stage — cache layer
+semantics stay unverified until independent owner/edge evidence agrees, and
+consequence claims hand off to the owning hunt skill. The owned-loopback lab in
+`tests/test_recon_cache_lab.py` proves the ledger's evidence logic only, not any
+CDN behavior. See [`plans/cache-deception-poisoning.md`](../plans/cache-deception-poisoning.md).
+
+### Offline cache capture and HTTP framing review
+
+`recon cache import|profile|isolation|reviews|review|verify-reviews` adds a separate
+bounded journal for local HAR, Burp XML/JSON and raw request/response-pair captures.
+Originals and immutable private copies retain capture fidelity and repeated header
+occurrences; exported summaries omit query/header values and bodies. Profiles
+stay capture/context/behavior/layer scoped. Isolation receipts require distinct
+partition/control artifacts for `source-supported`, but hashes are not semantic
+proof or traffic permission. `cache verify` audits the older event ledger;
+`cache verify-reviews` audits the new capture/profile/isolation journal.
+
+`recon http-review inspect|show|status|verify` records conservative **local HTTP/1
+framing lint**, not smuggling confirmation. It handles duplicate/ambiguous length
+fields, body-length and header-syntax checks and a basic bounded chunked subset.
+No captured bytes are forwarded, no H2/raw transport is installed and no target
+parser-differential engine runs. The HTTP loopback lab submits captures as JSON
+data; cache labs additionally cover private non-storage and a transformed-key
+collision versus a distinct-key control. Reports show at most 50 observations per
+journal and explicit truncation; neither review closes coarse coverage.
+
+See [`docs/offline-cache-http-review.md`](../docs/offline-cache-http-review.md) for
+formats, privacy boundaries, exact limits and verification paging.
+
 ### Skill triggers and the request executor
 
 - **Trigger:** `recon/score.py` seeds coverage rows for auth paths (login, signin, signup, register, password, reset, forgot, otp, mfa, 2fa, totp, verif, session, token, oauth, authorize, sso, saml, change-email, recover). `recon/skillmap.py` maps those classes to skills and `coverage.md` prints them in a `skill` column: `ato` → `hunt-auth-bypass`, `hunt-ato`; `mfa-bypass` → `hunt-mfa-bypass`; `oauth` → `hunt-oauth`; `saml` → `hunt-saml`. The hunter brief tells the agent to load the row's skill before testing; `@<skill-id>` in a prompt forces one.
 - **Executor:** `python3 -m recon send <campaign> <url> [--method POST] [--json J | --form k=v | --data D | --data-file F] [--header 'Name: value'] [--no-follow]` sends one request through `ScopedClient`: scope per hop, `policy.allowed_methods`, mode, budgets and pinned egress. `host_pacing` shares serial host slots, but its read/write reservation is **not atomic under simultaneous processes**; never rely on it as a concurrent gate or disable it to test a race. It prints the `request_id` for `fact check`. Request header values are never stored; request and response bodies are stored as evidence. `Host`/proxy header overrides are refused.
+- **External tool executor:** `python3 -m recon exec <campaign> --tool T --engagement ID --estimate N [--plan] [--no-import] -- <tool args>` is the **second accounted sending path** and the only way to run a scanner from here. Allowlisted profiles: `httpx`, `katana`, `ffuf` (mode `loud` only), `nuclei`, `dalfox`, `sqlmap`. Before anything launches it checks every target it can see (flags, `-list` files, and any argv token carrying a scheme) against scope, requires the profile's honest `sends` methods to be in `policy.allowed_methods` (so nuclei/dalfox/sqlmap need a POST grant), refuses hosts deferred by `engagement block-host`, refuses the per-tool escape hatches (shell/file-write modes, `--tamper`, `-interactsh-server`, proxies, raw-request files, headless browsers, `-g` dorking) and refuses any flag recon injects itself (rate, output, caps). `--estimate` is pre-charged to the same atomic campaign counter `send` uses and is **never refunded**; reconciliation is upward only, from result records that prove requests happened. A wall-clock cap of `estimate ÷ max_rps` bounds tools with no request-count flag. Artifacts land hashed at mode 0600 in `.recon/exec/<run-id>/` with a `run.json`, append to `engagements/<id>/exec-runs.jsonl`, and import through the offline adapters as **unverified surface claims, never findings**. `--plan` validates everything and launches nothing. A refusal is a stop, not a detour.
+- **Proof levels and measured data impact:** findings carry `poe_level` 0-4 (0 nothing / 1 error, timing or response variation / 2 structural manipulation / 3 data extracted or action performed / 4 critical impact demonstrated), added in place to existing campaigns. `finding move <id> impact-proven` requires PoE >= 3, `--measurement` with a real denominator (or `not measurable: <reason>`), and `--quote` verbatim-present in the bound impact artifact - **headers count**, so a `Set-Cookie` or `Location` is a result. **Reach is not impact:** whenever a finding claims data exposure (the default for a data class), `--data-impact` must measure what the primitive yields - how many items are reachable, how many were characterised, a class per item (`recon/dataimpact.py` `CLASSES`), what the data is about, and whether the count is complete or a floor. Severity obeys two ceilings and the lower wins: stage/PoE (lead -> none, confirmed -> medium, PoE 3 -> high, PoE 4 -> critical) and data tier (one credential -> critical; sensitive -> critical at 100+, high at 2+, medium at 1; internal -> medium; noise -> low; uncharacterised -> medium). PoE 4 is refused unless the measurement itself supports critical. When the impact is an action rather than data, `--impact-kind state-change|account-takeover|code-execution|denial` is declared and recorded instead, and the finding is rated on stage and proof level alone. `--override` with a reason is the only way above a ceiling, and it is recorded on the event. **Values are never stored:** a field name, a 4-character-maximum prefix and a salted SHA-256 only; a measurement carrying a `value`/`secret`/`password`/`raw` key, or a longer prefix, is refused.
+- **Intent queue:** `python3 -m recon intent add|list|show|claim|renew|finish|fail|pause|resume|sweep|context|resume-input|status <campaign> --id ID` is the offline work queue for autonomous runs: one bug class × one surface per intent, routed to a hunt skill by `skillmap.py` (an unrouted class gets `explore` and is still worked). A `claim` leases the intent to one worker with an opaque token; only the token holder can renew, finish or fail it, and a lease unrenewed for 180s is swept back to `open`, so a crashed worker strands nothing (three sweeps block it instead of looping). `finish` takes `done`, `exhausted` or `stopped` only — an error is `fail`, which retries twice with backoff and then blocks, so a provider outage can never be recorded as a negative result about the target. **`exhausted` is a cut-off direction, not coverage.** An intent with a pending `recon operator` question is unclaimable while the rest of the engagement keeps running. `context` returns the intent's instruction separately from nonce-framed surface values and other workers' facts; `resume-input` continues an existing session rather than re-briefing it. The queue holds no scope, policy, budget or sending authority, and starts no worker: a human starts every run.
 - **Imported skills:** the five auth `hunt-*` skills are adapted from mind-hunt (MIT, © 2026 MindflareX; notice and source SHA-256 in each folder's `LICENSE.txt` and frontmatter). Full-keyspace OTP brute force, IP rotation through proxies, breach-corpus password spraying, real-user identities and references to skills outside the folder were removed; tests (`tests/test_recon_skills.py`) fail if any return. Cited H1 reference cases are checked against `vault/_data/reports-merged.csv`. OTP races require an operator-run Burp capability, not unsynchronized Intruder concurrency; callbacks use Collaborator (MCP generation/polling tools available). A native burst executor is not built; **offline `import-burp` already imports XML/JSON/raw requests** and does not synchronize a group. The shared workflow and fallback plan are in `.claude/skills/scope-policy/references/burp-workflow.md`; without permission, tools or adequate proof, park the lead. The new BL/race skills are independently written from referenced concepts, not copied MindHunt text.
 - **Input census and injection hunting:** `recon inputs <campaign> --asset-id N` merges every observed input name with its locations, methods, accounts, sensitive-name flags, ID-likeness, coverage status and **stored-probe receipts** (which field names appear in stored request URLs/bodies), and states the header/cookie capture gap explicitly. `hunt-xss` maps per-field render contexts (HTML body, attribute, JS string, template, URL), classifies the filter/WAF rule with a one-probe-at-a-time ladder before any variant is designed, and covers reflected/stored/DOM/blind variants with marker-execution proofs; `hunt-sqli` proves injection with differential triples (probe, condition flip, negative control) across error/boolean/time/out-of-band/UNION/second-order variants, maps the detector first, and gates stacked/write probes behind program allowance. Neither dispatches payload wordlists or sqlmap; extraction proofs are minimal (banner or one test record).
 - **CSRF action ledger:** `recon/score.py` seeds `csrf` rows for POST/PUT/PATCH/DELETE, for GET or method-unknown routes with a state-change verb (`/items/7/delete`, camelCase included) or action selector (`?action=`), and for `ws`/`wss` endpoints; `csrf` → `hunt-csrf`. See *CSRF: action × context × case ledger* below.

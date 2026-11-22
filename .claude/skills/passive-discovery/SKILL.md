@@ -5,9 +5,9 @@ description: Collect authorized BugVault certificate and archived-URL inventory,
 
 # Passive discovery
 
-Read the scope-policy guide first. Use `policy.mode=passive` for zero HTTP requests to the target; crt.sh and Wayback are third-party disclosures and may still be restricted by program rules.
+ Use `policy.mode=passive` for zero HTTP requests to the target; crt.sh and Wayback are third-party disclosures and may still be restricted by program rules.
 
-Run `python3 -m recon run <campaign> --max-jobs 100` only after authorization review. For existing artifacts use `python3 -m recon import <campaign> <file> --format subfinder` or `--format bbot`; imports themselves use no network.
+Run `python3 -m recon run <campaign> --max-jobs 100`. For existing artifacts use `python3 -m recon import <campaign> <file> --format subfinder` or `--format bbot`; imports themselves use no network.
 
 Retain source attribution and import hashes. Classify archive references as historical, not current liveness. Out-of-scope discoveries belong in intel, never new authorization. Imported BBOT finding/vulnerability events are unsupported, not confirmed findings.
 

@@ -139,3 +139,7 @@ dangle. Never erase inconclusive or historical evidence to make status look comp
 Provenance, external reference URLs and corrections to the supplied proposal:
 [sources](references/sources.md). Judgment cases live in `evals/`; they are not
 executed tests or evidence of full provider/record-type coverage.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

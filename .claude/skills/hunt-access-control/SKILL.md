@@ -126,3 +126,7 @@ If an attempt was recorded first, append its proof as a second event with the
 same marker/variant and `--requests 0` (no new traffic). A chain rung needs a
 **fresh** marker. The ledger validates artifact shapes and hashes, not the
 operator's real-world authorization or the server's causal behavior.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

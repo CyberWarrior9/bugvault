@@ -3,6 +3,17 @@
 HTTP request smuggling and desync for BugVault.
 Drafted 2026-11-16. Target branch `recon-engine`. Baseline: 511 tests green.
 
+**Implementation status, November 20:** the historical proposal below is not an
+execution grant or an inventory of installed features. Installed: `hunt-http-smuggling`
+and explicit review-row routing; `recon http-review inspect|show|status|verify` for
+local, conservative HTTP/1 capture lint; a private hash-bound observation journal;
+bounded coverage reporting; and a loopback JSON review-gate regression test. The
+gate treats captures as data, never forwards malformed HTTP and proves no desync.
+There is **no** smuggling CLI, target parser-differential engine, raw-socket/H2
+transport, timing-probe sender or live pilot. In particular, the historical claim
+below that timing tests are “self-only by construction” is not a safety guarantee.
+See [current offline formats and limits](../docs/offline-cache-http-review.md).
+
 ---
 
 ## 1. Corpus position
@@ -109,6 +120,49 @@ Short, but its two best sections are exactly the ones nothing else has:
 The suitability matrix is the thing to port first. Classic CL.TE/TE.CL is largely
 patched across major stacks; spending the budget there is how this class gets written
 off as dead. The live surface is the **downgrade hop**.
+
+### The suitability matrix, ported
+
+mind-hunt L36-53, with its own framing: *"The classic CL.TE / TE.CL payloads are NOT
+universally exploitable in 2026. Modern proxies are RFC 9112 strict by default.
+Fingerprint the front-end BEFORE investing time."*
+
+| Front-end | CL.TE | TE.CL | H2.CL | H2.TE | Note |
+|---|---|---|---|---|---|
+| Nginx ≥ 1.21 | no | no | partial | partial | RFC-strict; rejects CL+TE with 400 |
+| Caddy 2.x | no | no | — | — | hardened by default |
+| Envoy ≥ 1.20 | no | no | partial | partial | hardened in most paths |
+| **HAProxy ≤ 2.4** | **yes** | **yes** | — | — | CVE-2021-40346 |
+| AWS ALB + specific upstream | partial | partial | **yes** | **yes** | disclosed-paid 2022-2024 |
+| **Cloudflare → S3 / Lambda chains** | — | — | **yes** | **yes** | H2-downgrade remains viable |
+| Older F5 BIG-IP (TMM < 16) | **yes** | — | — | — | vendor advisories |
+| Citrix ADC / NetScaler (older firmware) | **yes** | **yes** | — | — | disclosed 2020-2022 |
+| Squid 3.x | **yes** | — | — | — | older deployments |
+| Apache Traffic Server (older) | **yes** | **yes** | **yes** | **yes** | PortSwigger research |
+| Custom Python / Go proxies | **yes** | **yes** | — | — | frequently miss RFC enforcement |
+
+mind-hunt backs the Nginx row empirically — *"Verified locally on Nginx 1.27 — all 9
+documented variants killed by front-end"* — and references its own
+`docs/verification/phase2h-smuggling-cachepoison.md`. Treat the table as a prior to
+re-verify per target, not as ground truth: firmware and config override the vendor
+default, and the matrix is a 2026 snapshot.
+
+### Operator fingerprint quick-check
+
+One request, before anything else (mind-hunt L54-63):
+
+```bash
+curl -sI https://target/ | grep -i "Server:"
+```
+
+| Signal | Action |
+|---|---|
+| `nginx/1.21+`, `Caddy`, `envoy` | classic CL/TE is dead — pivot to H2.CL/H2.TE if the front-end speaks HTTP/2, or look for a legacy proxy further upstream |
+| `HAProxy`, or a header pointing at AWS/CDN | run the full technique matrix |
+| no `Server` header | assume hardened, but run one `space-before-colon` probe; if it does not 400, dig further |
+
+This slots in as `hs-fingerprint` (§10) and populates `smuggle_topology.front_end`
+and `front_end_version` (§13).
 
 ### Priority order this implies
 
@@ -227,10 +281,39 @@ Two reasons that ordering is correct, and the second is the one that governs:
    and the result is unreportable either way.
 
 So the sequence is: **timing probe → confirm on a connection you hold → demonstrate
-impact against your own second request.** plan4 row 22 already names the last step —
-"own-session poison" — and it is also the strongest proof, because the smuggled
-prefix landing in *your* follow-up request is a clean two-response artifact a triager
-can replay.
+impact on a second client you also control.**
+
+### The second client is not optional — and it is not a victim either
+
+An earlier draft of this plan stopped at "your own second request", citing plan4
+row 22's "own-session poison". mind-hunt corrects that, and the correction is right:
+
+> the smuggled-request effect MUST land on a request issued by a **different
+> client/session**, not your own follow-up. A timing delta in your own browser alone
+> is parser disagreement, not exploitable smuggling.
+> — `hunt-http-smuggling` L79
+
+Its cache skill states the same bar independently: *"If only the attacker sees the
+effect, it's not cache poisoning"* (`hunt-cache-poison` L224).
+
+That is an impact argument and it stands: a desync you only observe in your own
+request stream has not shown that anyone else's request can be affected.
+
+But note what mind-hunt does **not** say. The second client is a *second client*, not
+a third party. Its own 10-minute reproduction spells out the method —
+*"fetch the URL from incognito/different IP"* (`hunt-cache-poison` L230). Two
+clients you control on the same connection or pool clears the bar without queuing a
+prefix for a real user.
+
+So the demonstration is: **client A smuggles, client B — your second session, a
+second IP, or an anonymous fetch you issue — receives the effect.** Both references
+stored, both yours. That satisfies mind-hunt's gate, keeps the artifact replayable by
+a triager, and is the shape the `own_connection` ledger column and the
+`own-connection` eval (§16) already assume.
+
+The ledger records it as `attempt_kind` plus two response refs; §14 binds
+`hs-prefix` to a marker appearing in the **second client's** response rather than the
+first's.
 
 ---
 
@@ -255,22 +338,43 @@ fingerprint read.
 
 ## 9. The executor gap — and a shared primitive
 
-plan4 row 22 says "raw socket executor" and that is correct. The constraint is
-precise:
+plan4 row 22 says "raw socket executor". That is necessary but it is **not the
+primary need**, and an earlier draft of this section had the priority backwards.
+mind-hunt states the correction directly:
+
+> Tools that send HTTP/2 raw frames (Burp's HTTP Request Smuggler, `h2csmuggler`,
+> `smuggler.py`) are the right starting point against CDN-fronted targets. **Avoid
+> HTTP/1.1-only test clients (curl, raw sockets) against H2-front-ended targets —
+> you'll send the wrong protocol entirely.** Most CDN+origin chains in 2024-2026 use
+> this exact topology.
+> — `hunt-http-smuggling` L68
+
+Built raw-sockets-first, `recon/transport.py` would be unable to reach the majority
+of live targets — it would speak HTTP/1.1 at front-ends that negotiate h2, and every
+negative result would be an artifact of the client, not the target. So:
 
 ```
-HTTP/1.1 desync needs byte-exact control:
+PRIMARY — H2.CL / H2.TE need frame-level HTTP/2 control:
+  - explicit content-length in an h2 request
+  - CRLF in header values
+  - pseudo-header manipulation
+  - no automatic length recalculation on downgrade
+  -> the h2 / hyper-h2 library, same as the race plan's single-packet work
+  -> covers §4 priority 1, the dominant 2021 + 2025 surface
+
+SECONDARY — HTTP/1.1 desync needs byte-exact control:
   - malformed or conflicting Content-Length
   - obfuscated Transfer-Encoding the library would normalise or reject
   - no automatic header fixing, no automatic chunked encoding
   -> Python socket/ssl with hand-built request bytes
-
-H2.CL / H2.TE need frame-level HTTP/2 control:
-  - explicit content-length in an h2 request
-  - CRLF in header values
-  - pseudo-header manipulation
-  -> the h2 / hyper-h2 library, same as the race plan's single-packet work
+  -> covers §4 priority 4 only: legacy proxy chains from the matrix's "yes" rows
+     (HAProxy ≤ 2.4, older F5/Citrix/Squid/ATS, custom Python/Go proxies)
 ```
+
+The fingerprint check (§4) decides which transport a given target even gets, so it
+runs before either. A `Server:` header of `nginx/1.21+`, `Caddy` or `envoy` means the
+raw-socket path is a waste of budget on that host regardless of what the matrix says
+about its partial H2 columns.
 
 `recon send` is an HTTP client and normalises by design; it cannot do either.
 
@@ -374,7 +478,17 @@ and PII classes this one needs no new vocabulary in `build_dossiers.py`.
 
 ### `recon/transport.py` — the shared executor (§9)
 
-Built once, serves plan4 rows 15 and 22.
+Built once, serves plan4 rows 15 and 22. Two layers, and the order is load-bearing
+(§9):
+
+| Layer | Need | Serves |
+|---|---|---|
+| `h2_frames` | frame-level h2: explicit `content-length`, CRLF in header values, pseudo-header control, no length recalculation on downgrade | **primary** — H2.CL/H2.TE (§4 priority 1) and the race plan's single-packet withhold |
+| `raw_h1` | byte-exact HTTP/1.1: conflicting CL, obfuscated TE, no header fixing or auto-chunking | legacy only — §4 priority 4, the matrix's "yes" rows |
+
+`h2_frames` is the shared surface with the race plan: smuggling needs frame
+*construction*, single-packet needs frame *withholding*, and both need the same
+control over when bytes leave. `raw_h1` is smuggling-only.
 
 ### `recon/smuggle.py` — profile plus ledger
 
@@ -570,16 +684,21 @@ breadth · blocker defeat · prefix proof · window measurement · chain amplifi
 ## 18. Build order
 
 1. **`downgrade_indicator` + `protocol_support` + `PROXY_SIGNATURES`** in
-   `fingerprint.py`. Offline reads, and they answer the question that decides
-   everything else (§4).
+   `fingerprint.py`, plus the `Server:` header quick-check (§4) as `hs-fingerprint`.
+   Together they answer the question that decides everything else, and the
+   quick-check is one HEAD request — the cheapest step in the whole class.
 2. **`smuggle_topology` table and `recon smuggle topology`** — the suitability
    assignment. Still no malformed request sent.
-3. **`recon/transport.py`** as its own bounded project — raw socket plus h2 frames,
-   inside scope/rate/budget enforcement. **Coordinate with the race plan**, which
-   needs the same h2 frame control for single-packet.
+3. **`recon/transport.py`** as its own bounded project, inside scope/rate/budget
+   enforcement. **`h2_frames` first, `raw_h1` second** (§9) — built in the other
+   order it cannot reach the targets the matrix says are live. **Coordinate with the
+   race plan**, which needs the same h2 frame control for single-packet.
 4. `recon/smuggle.py` ledger — schema, class, CLI, tests as four separate writes.
 5. Timing detection (`hs-timing`) first, on the executor.
-6. Confirmation and direction, then prefix and impact.
+6. Confirmation and direction, then prefix and impact. Impact needs the **second
+   client you also control** (§7) — a second session, a second IP, or an anonymous
+   fetch you issue — so `attempt_kind` and the two response refs land with it, not
+   after it.
 7. Chain rows and the smuggling → cache-poisoning amplification chain (§11), after
    the cache plan lands its class.
 
@@ -638,4 +757,13 @@ glance; the methodology is not. **Ten folders read, nine shells and one marginal
 - https://github.com/BaaRai/ARTEX — zero
 - https://github.com/vxcontrol/pentagi — zero
 - https://github.com/0xN0RMXL/BugBountySkills — `HTTP_Request_Smuggling/`, marginal
-- mind-hunt (local, MIT, © 2026 MindflareX) — `skills/hunt-http-smuggling/SKILL.md`
+- mind-hunt (local, MIT, © 2026 MindflareX) — `skills/hunt-http-smuggling/SKILL.md`,
+  SHA-256 `9b2bac1800746f1e987fcebd3790709401a25c68e9249fa6eeaeafbe1219e674`.
+  **Imported:** the Target-Suitability Matrix (L36-53) into §4, the operator
+  fingerprint quick-check (L54-63) into §4, the H2-first transport correction
+  (L68) into §9, and the cross-client impact gate (L79) into §7. Its sibling
+  `skills/hunt-cache-poison/SKILL.md`, SHA-256
+  `70809f2b64d04ea30f376b430e391e5d96fb0f5a30614a27014a268720fad390`, states the
+  same gate at L224 and L230 and is the reference for the §11 cache chain.
+  **Not imported:** its CL.TE worked example (L9-19), superseded by HackTricks §5;
+  its chain prose (L72-81), already covered by §11 with ledger bindings.

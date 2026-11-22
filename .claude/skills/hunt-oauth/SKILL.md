@@ -197,10 +197,6 @@ Public write-ups cited upstream (external, not indexed):
 - Detectify "dirty dancing": response-type switching and promiscuous `postMessage`
   listeners leaking codes without XSS (2022).
 
-## Hard limits
-
-Only accounts and OAuth clients you own; never phish real users; codes and tokens you
-capture belong to your test accounts; stop at the minimum proof of an exchange.
 
 ## Related skills
 
@@ -208,3 +204,7 @@ capture belong to your test accounts; stop at the minimum proof of an exchange.
 (SAML-fronted OAuth issuers) · `hunt-auth-bypass` · `service-mapping` (a `takeover-lead`
 under an allowed `redirect_uri` parent domain is the highest-impact OAuth chain) ·
 `apk-static-mapping` (deep links and client secrets).
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

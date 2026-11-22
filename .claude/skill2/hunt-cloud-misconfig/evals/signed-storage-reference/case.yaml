@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: signed-storage-reference
+expected_outcome: |
+  Separates signed access from anonymous, public monitor ID from credential,
+  offline extraction from live tests, and names the missing program/channel
+  prerequisites without claiming a vulnerability.

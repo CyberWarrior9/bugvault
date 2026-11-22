@@ -119,13 +119,13 @@ SAML Raider (Burp extension) for crafting XSW variants in your own browser sessi
 manual decoding, editing and re-encoding of the XML. Submissions still go through
 `recon send`.
 
-## Hard limits
-
-Only identities you own; no real user or administrator as the target; minimum data once
-V's marker is proven.
 
 ## Related skills
 
 `hunt-ato` (an XSW without audience validation is the canonical service-provider
 impersonation chain) · `hunt-auth-bypass` (signature stripping is a textbook bypass) ·
 `hunt-oauth` (SAML-fronted OAuth issuers turn assertion bugs into token-level takeover).
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

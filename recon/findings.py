@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS findings(
   priority INTEGER NOT NULL DEFAULT 0,
   detail TEXT NOT NULL DEFAULT '{}',
   dedup_key TEXT UNIQUE,
+  poe_level INTEGER NOT NULL DEFAULT 0,
   created TEXT,
   updated TEXT);
 CREATE TABLE IF NOT EXISTS finding_events(
@@ -78,6 +80,44 @@ TRANSITIONS = {
     "reported": set(OUTCOMES),
 }
 SEVERITIES = ("none", "low", "medium", "high", "critical")
+
+#: Proof-of-exploitation level (ARTEX `server/orchestration.go:457`), enforced here
+#: rather than left as free text:
+#:   0 nothing yet · 1 error, timing or response variation · 2 structural manipulation
+#:   3 data actually extracted or an action actually performed
+#:   4 critical impact demonstrated — and for a data-exposure finding, "critical" is not
+#:     a word a worker may choose: it has to fall out of the `data_impact` measurement.
+POE_LEVELS = (0, 1, 2, 3, 4)
+
+#: The most severity a stage and proof level can carry on their own. The effective
+#: ceiling is this *and* the data ceiling from `dataimpact.ceiling`, whichever is lower.
+#: `lead` is handled separately (always "none"), so only the two provable stages appear.
+STAGE_CEILING = {
+    ("confirmed", 0): "medium", ("confirmed", 1): "medium", ("confirmed", 2): "medium",
+    ("confirmed", 3): "medium", ("confirmed", 4): "medium",
+    ("impact-proven", 3): "high", ("impact-proven", 4): "critical",
+}
+
+#: Classes whose impact *is* data exposure, so `impact-proven` has to answer "how much
+#: of what" with a `dataimpact` measurement. Reaching the surface is not the impact.
+DATA_EXPOSURE_CLASSES = frozenset({
+    "info-disclosure", "cloud-metadata", "js-bundle", "idor-bola", "access-control",
+    "mass-assignment", "sqli", "ssrf", "xxe", "file-read", "graphql", "ssti",
+    "command-injection", "deserialization", "cache", "subdomain-takeover",
+})
+
+#: What an `impact-proven` finding actually demonstrates. A class in
+#: `DATA_EXPOSURE_CLASSES` defaults to `data-exposure` and then owes a `dataimpact`
+#: measurement; declaring another kind says in the record that this finding is about an
+#: action rather than data, which the validator can see and dispute. An access-control
+#: finding that *renames* another tenant's object is a `state-change`; one that *reads*
+#: it is `data-exposure`, and the same class covers both.
+IMPACT_KINDS = ("data-exposure", "state-change", "account-takeover", "code-execution",
+                "denial")
+
+#: A measurement may be declined only by saying so explicitly, with a reason.
+NOT_MEASURABLE = "not measurable:"
+_MEASURED = re.compile(r"\b\d+\s*(?:/|of|out of)\s*\d+\b", re.I)
 RELATIONS = ("yields-token", "yields-id", "yields-access", "authenticates-to",
              "escalates-via", "pivots-to", "enables", "same-root-cause",
              "spawns", "derived-from", "proves")
@@ -85,6 +125,12 @@ COVERAGE_FOR_STAGE = {"lead": "queued", "confirmed": "confirmed", "killed": "ref
 
 # Unlinked findings on the same host whose classes commonly chain into a higher severity.
 CHAIN_HINTS: Tuple[Tuple[str, str, str], ...] = (
+    ("security-misconfiguration", "ato", "uneven auth policy, token reuse or live session "
+     "after logout -> owned-account takeover; posture alone is not a finding"),
+    ("security-misconfiguration", "csrf", "missing framing restriction on a sensitive "
+     "owned-account action -> browser-initiated clickjacking/CSRF proof"),
+    ("security-misconfiguration", "info-disclosure", "NTLM or ASP.NET configuration "
+     "exposure -> independently verified sensitive information, not a banner alone"),
     ("open-redirect", "oauth", "redirect_uri allowlist bypass -> code/token theft -> ATO"),
     ("open-redirect", "ssrf", "redirect through an allowed host to bypass the SSRF allowlist"),
     ("xss", "ato", "XSS -> read token / change email from the victim session -> ATO"),
@@ -116,7 +162,41 @@ class StageError(ValueError):
 
 def ensure_schema(store) -> None:
     store.db.executescript(SCHEMA)
+    # Campaigns created before proof levels existed keep their rows; the column is
+    # added in place and defaults to 0 ("nothing proven yet"), never to a claim.
+    columns = {r["name"] for r in store.db.execute("PRAGMA table_info(findings)")}
+    if "poe_level" not in columns:
+        store.db.execute("ALTER TABLE findings ADD COLUMN poe_level INTEGER NOT NULL DEFAULT 0")
     store.db.commit()
+
+
+def severity_ceiling(stage: str, poe_level: Optional[int],
+                     measurement: Optional[Dict[str, Any]] = None,
+                     kind: str = "data-exposure") -> str:
+    """The highest severity a finding may carry, from its proof and its data.
+
+    Two independent caps, and the lower one wins: what the stage and proof level can
+    support at all, and what the measured data is actually worth. A demonstrated
+    primitive with uncharacterised data is capped at medium by the second cap even when
+    the first would allow critical — which is the point of the 2026-11-22 decision.
+
+    The data cap applies to a `data-exposure` finding always, and to any other kind that
+    supplied a measurement anyway. A proven state change with no data read is rated by
+    its stage and proof level, because there is no data to count.
+    """
+    from .dataimpact import ceiling as data_ceiling
+
+    if stage == "lead":
+        stage_cap = "none"
+    elif stage in ("confirmed", "impact-proven"):
+        stage_cap = STAGE_CEILING.get((stage, poe_level if poe_level is not None else 0), "medium")
+    else:
+        return SEVERITIES[-1]  # reported/terminal stages keep whatever triage decided
+    if stage != "impact-proven":
+        return stage_cap
+    if kind != "data-exposure" and not measurement:
+        return stage_cap
+    return min(stage_cap, data_ceiling(measurement), key=SEVERITIES.index)
 
 
 def _row(r) -> Dict[str, Any]:
@@ -124,6 +204,12 @@ def _row(r) -> Dict[str, Any]:
     d["tech"] = json.loads(d.get("tech") or "[]")
     d["detail"] = json.loads(d.get("detail") or "{}")
     return d
+
+
+def _clean_poe(level: Any) -> int:
+    if type(level) is not int or level not in POE_LEVELS:
+        raise StageError(f"poe_level must be one of {POE_LEVELS}")
+    return level
 
 
 def _clean_severity(sev: Optional[str]) -> Optional[str]:
@@ -210,7 +296,11 @@ class Findings:
     def move(self, fid: int, to: str, *, note: Optional[str] = None,
              replay: Optional[Path] = None, control: Optional[Path] = None,
              impact: Optional[Path] = None, report: Optional[Path] = None,
-             severity: Optional[str] = None) -> Dict[str, Any]:
+             severity: Optional[str] = None, poe_level: Optional[int] = None,
+             measurement: Optional[str] = None, quote: Optional[str] = None,
+             data_impact: Optional[Dict[str, Any]] = None,
+             override: Optional[str] = None,
+             impact_kind: Optional[str] = None) -> Dict[str, Any]:
         f = self.get(fid)
         cur = f["stage"]
         if to not in TERMINAL and f["url"] and not self.ctx.campaign.scope.is_in(f["url"]):
@@ -221,6 +311,17 @@ class Findings:
             allowed = sorted(TRANSITIONS.get(cur, set())) or "none (terminal)"
             raise StageError(f"finding {fid}: {cur} -> {to} not allowed; next: {allowed}")
         evidence: Dict[str, Any] = {}
+        # A measurement is validated and recorded wherever it is supplied, not only on
+        # the move to impact-proven: a `--data-impact` that was quietly ignored on some
+        # other transition would be a silent hole in the no-raw-values rule, and would
+        # also lose a measurement the author believed was recorded.
+        if data_impact is not None:
+            from .dataimpact import MeasurementError, summarise, validate
+            try:
+                evidence["data_impact"] = validate(data_impact)
+            except MeasurementError as error:
+                raise StageError(str(error)) from error
+            evidence["data_impact_summary"] = summarise(evidence["data_impact"])
         if to == "confirmed":
             if not replay or not control:
                 raise StageError("confirmed needs --replay (succeeds on target) and --control "
@@ -234,17 +335,105 @@ class Findings:
             if not impact:
                 raise StageError("impact-proven needs --impact (what the attacker actually gets)")
             evidence["impact"] = self._keep(impact)
+            evidence.update(self._impact_gate(f, Path(impact), poe_level, measurement,
+                                              quote, evidence.get("data_impact"),
+                                              impact_kind))
         if to == "killed" and not (note and note.strip()):
             raise StageError("killed needs --note with the reason (it trains future ranking)")
         if report:
             evidence["report"] = self._keep(report)
         sev = _clean_severity(severity)
-        self.db.execute("UPDATE findings SET stage=?, severity=COALESCE(?, severity), updated=?"
-                        " WHERE id=?", (to, sev, now(), fid))
+        level = f["poe_level"] if poe_level is None else _clean_poe(poe_level)
+        if sev is not None and to not in TERMINAL:
+            cap = severity_ceiling(to, level, evidence.get("data_impact"),
+                                   evidence.get("impact_kind", "data-exposure"))
+            if SEVERITIES.index(sev) > SEVERITIES.index(cap):
+                if not (override and override.strip()):
+                    raise StageError(
+                        f"severity {sev!r} is above the {cap!r} ceiling for stage {to!r} at "
+                        f"PoE {level}"
+                        + (f" with {evidence['data_impact']['tier']}-tier data "
+                           f"({evidence['data_impact']['reachable']} items reachable)"
+                           if evidence.get("data_impact") else
+                           " with the data left uncharacterised")
+                        + ". Measure more of the data, or pass --override with the reason "
+                          "the ceiling is wrong here.")
+                evidence["severity_override"] = {
+                    "claimed": sev, "ceiling": cap, "reason": override.strip()[:500]}
+        self.db.execute("UPDATE findings SET stage=?, severity=COALESCE(?, severity),"
+                        " poe_level=?, updated=? WHERE id=?", (to, sev, level, now(), fid))
         self._event(fid, cur, to, note=note, evidence=evidence)
         self._sync_coverage(fid, to)
         self.db.commit()
         return self.get(fid)
+
+    def _impact_gate(self, f: Dict[str, Any], impact: Path, poe_level: Optional[int],
+                     measurement: Optional[str], quote: Optional[str],
+                     data_impact: Optional[Dict[str, Any]],
+                     kind: Optional[str] = None) -> Dict[str, Any]:
+        """What `impact-proven` has to carry beyond an artifact (plan §5.2).
+
+        A proof level of at least 3, a measurement with a denominator, one verbatim
+        quote that is actually present in the bound artifact, and — for a class whose
+        impact is data exposure — a `dataimpact` measurement saying how much of what.
+
+        `data_impact` arrives already validated by `move`.
+        """
+        from .dataimpact import summarise
+
+        level = _clean_poe(poe_level if poe_level is not None else f["poe_level"])
+        if level < 3:
+            raise StageError(
+                f"impact-proven needs --poe-level 3 or 4, got {level}. PoE 3 is data "
+                "actually extracted or an action actually performed; an error, a timing "
+                "difference or a structural manipulation is PoE 1-2 and stays confirmed.")
+
+        text = " ".join(str(measurement or "").split())
+        if not text:
+            raise StageError(
+                "impact-proven needs --measurement: a number with a denominator, such as "
+                "\"3 of 20 variants returned other-tenant rows; 17 rejected\", or "
+                f"\"{NOT_MEASURABLE} <reason>\" if it genuinely cannot be counted.")
+        if not text.lower().startswith(NOT_MEASURABLE) and not _MEASURED.search(text):
+            raise StageError(
+                f"--measurement {text!r} has no denominator. Give the numerator and the "
+                f"denominator (\"4 of 50\"), and say what the defence blocked, or state "
+                f"\"{NOT_MEASURABLE} <reason>\".")
+
+        if not (quote and quote.strip()):
+            raise StageError("impact-proven needs --quote: a verbatim string from the "
+                             "impact artifact that shows the result")
+        blob = Path(impact).read_bytes()
+        needle = quote.strip().encode("utf-8", "replace")
+        # Headers count, not only the body: an attacker-visible Set-Cookie or Location
+        # is as much a result as a row of data (ARTEX checks the body alone).
+        if needle not in blob:
+            raise StageError(
+                f"--quote is not present verbatim in {Path(impact).name}; the impact "
+                "claim must quote the artifact it is bound to, headers included")
+
+        if kind is not None and kind not in IMPACT_KINDS:
+            raise StageError(f"impact kind must be one of {IMPACT_KINDS}")
+        declared = kind or ("data-exposure" if f["bug_class"] in DATA_EXPOSURE_CLASSES
+                            else "state-change")
+        out: Dict[str, Any] = {"poe_level": level, "measurement": text,
+                               "impact_kind": declared, "quote": quote.strip()[:500]}
+        if data_impact is None:
+            if declared == "data-exposure":
+                raise StageError(
+                    f"this {f['bug_class']} finding claims data exposure, so "
+                    "impact-proven needs --data-impact: how many items are reachable, "
+                    "how many you characterised, what each is (see recon/dataimpact.py "
+                    "CLASSES) and what the data is about. Reaching the surface is not "
+                    "the impact. If the impact is an action rather than data, say so "
+                    f"with --impact-kind from {IMPACT_KINDS[1:]}.")
+            return out
+        if declared == "data-exposure" and level == 4 and data_impact["ceiling"] != "critical":
+            raise StageError(
+                f"PoE 4 needs data worth critical, but this measurement supports "
+                f"{data_impact['ceiling']!r}: {summarise(data_impact)}. Either measure "
+                "more of what is reachable, or record PoE 3.")
+        return out
 
     def link(self, src: int, relation: str, dst: int, note: Optional[str] = None) -> bool:
         if relation not in RELATIONS:

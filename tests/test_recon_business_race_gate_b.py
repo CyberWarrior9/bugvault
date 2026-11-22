@@ -113,7 +113,9 @@ class OwnedCommerceGateB(unittest.TestCase):
                                        "one owned downstream effect " + json.dumps(effect, sort_keys=True))
         findings = Findings(self.ctx)
         findings.move(fid, "confirmed", replay=replay, control=control)
-        findings.move(fid, "impact-proven", impact=impact)
+        findings.move(fid, "impact-proven", impact=impact, poe_level=3,
+                      quote="one owned downstream effect", impact_kind="state-change",
+                      measurement="1 of 1 owned synthetic downstream effects observed")
         followup = event(self.root, context, f"{tag}_owned_followup_01", suffix=tag + "follow")
         followup.update({"impact_tier": "T4", "root_key": tag, "chain_finding": fid,
                          "attacker_gain": "one synthetic owned downstream effect"})

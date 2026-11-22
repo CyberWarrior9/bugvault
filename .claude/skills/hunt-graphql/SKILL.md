@@ -24,8 +24,7 @@ admin test account proves nothing about your low-privilege one.
 
 ## Workflow
 
-1. Read `scope-policy` and the campaign's written rules. Use only supplied test
-   accounts, and the dedicated browser through Burp or a recorded campaign
+1. Use only the dedicated browser through Burp or a recorded campaign
    execution path.
 2. Read the operation inventory recon already produced:
    `python3 -m recon recall <campaign> graphql` and the service attrs
@@ -56,7 +55,7 @@ closed introspection endpoint still leaves suggestion-based reconstruction.
 
 ### gql-introspection
 
-Ask once per principal: unauthenticated, low-privilege, and your authorized
+Ask twice per principal: unauthenticated, low-privilege, and your authorized
 account. Introspection disabled for one is not disabled for all, and the common
 misconfiguration is that it is open to any authenticated session.
 
@@ -123,10 +122,9 @@ is the strongest version of this class.
   it resolves before building on it.
 - Alias and batch delivery belongs to `hunt-csrf` for transport and to `hunt-idor`
   for multi-principal substitution. Recording it here duplicates coverage.
-- **Query-depth and complexity exhaustion is out of scope.** It is a denial-of-service
-  class, excluded by AGENTS.md, and mind-hunt's own source material calls it
-  low-paying. Do not record it as a case, blocked or otherwise.
 - Field-level results are per principal and per node. One principal's success does
   not close another's row; one node's result does not generalise to the type.
-- Respect rate and budget limits. Batched and aliased operations multiply backend
-  work inside a single request, so a bounded request count is not a bounded load.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

@@ -30,9 +30,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 from .callbacks import (approved_callback_host, require_callback_url, timestamp,
-                        valid_marker, verified_bytes)
+                         valid_marker, verified_bytes)
 from .campaign import HTTP_METHODS
 from .extract import ID_SEGMENT, endpoint_key
+from .factcheck import response_hash
+from .offline_review import label as review_label
 from .score import applicable_classes
 from .store import now
 
@@ -95,6 +97,22 @@ CREATE TABLE IF NOT EXISTS payload_events(
   provider TEXT NOT NULL DEFAULT '',
   note TEXT NOT NULL DEFAULT '',
   created TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS declared_constraints(
+  id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL REFERENCES assets(id),
+  method TEXT NOT NULL, location TEXT NOT NULL, field TEXT NOT NULL,
+  kind TEXT NOT NULL, rule_value TEXT NOT NULL, source TEXT NOT NULL,
+  source_ref TEXT NOT NULL, created TEXT NOT NULL,
+  UNIQUE(asset_id,method,location,field,kind,rule_value,source,source_ref));
+CREATE TABLE IF NOT EXISTS field_surface_expectations(
+  id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL REFERENCES assets(id),
+  field TEXT NOT NULL, surface TEXT NOT NULL, case_id TEXT NOT NULL,
+  account TEXT NOT NULL, workflow TEXT NOT NULL, source_ref TEXT NOT NULL,
+  reason TEXT NOT NULL, created TEXT NOT NULL,
+  UNIQUE(asset_id,field,surface,case_id,account,workflow));
+CREATE TABLE IF NOT EXISTS field_surface_reviews(
+  expectation_id INTEGER PRIMARY KEY REFERENCES field_surface_expectations(id),
+  state TEXT NOT NULL, request_id INTEGER, response_sha256 TEXT,
+  note TEXT NOT NULL, updated TEXT NOT NULL);
 """
 
 LOCATIONS = ("query", "form", "json", "multipart", "header", "cookie", "path", "page", "unknown")
@@ -102,6 +120,9 @@ STATES = ("untested", "probed", "mapped", "observed", "negative", "blocked", "in
 TRIGGERS = ("list", "search", "filter", "create", "edit", "bulk", "export", "sort")
 CLAIMS = ("partial", "full")
 FINGERPRINT_KINDS = ("db", "csp", "template")
+CONSTRAINT_KINDS = ("minlength", "maxlength", "pattern", "min", "max", "enum", "accept", "required", "complexity", "blocklist", "reuse")
+CONSTRAINT_SOURCES = ("html-attr", "js-validator", "openapi", "json-schema", "server-rejection", "operator-stated")
+SURFACE_CASES = ("xss-reflected", "xss-stored", "xss-dom", "xss-blind", "htmli-structure", "ssti-eval")
 MARKER_PREFIX = "bv_"
 REALISM_ANSWERS = ("pass", "fail", "unanswered")
 
@@ -399,13 +420,16 @@ class FieldLedger:
                 cells[trigger] = {"state": "missing"}
         missing = [t for t, cell in cells.items() if cell["state"] == "missing"]
         claim_row = self.db.execute("SELECT * FROM module_claims WHERE module=?", (module,)).fetchone()
+        surfaces = self.surface_matrix(module)
         return {"module": module, "triggers": cells, "missing": missing,
-                "complete": not missing,
+                "surface_review": surfaces,
+                "complete": not missing and not surfaces["unresolved"],
                 "claim": claim_row["claim"] if claim_row else None,
                 "claim_updated": claim_row["updated"] if claim_row else None,
-                "basis": "cells come from real captured observations per trigger shape; "
-                         "some modules legitimately lack a trigger - record it n-a with "
-                          "a reason instead of leaving it missing"}
+                 "basis": "trigger cells mean captured shape, not a tested rule. Declared "
+                          "field/surface/case reviews gate full claims; an empty surface "
+                          "inventory means unknown, never proof all renders were visited. "
+                          "Mark absent triggers n-a only with a reason"}
 
     def diff(self, module: str) -> Dict[str, Any]:
         """Value-free, context-separated sent-versus-declared field comparison.
@@ -547,8 +571,9 @@ class FieldLedger:
         data = self.matrix(module)
         if claim_state == "full" and not data["complete"]:
             raise ValueError("full coverage cannot be claimed while trigger cells are "
-                             f"missing: {data['missing']}; record the observations, or "
-                             "mark genuinely absent triggers n-a with a reason")
+                             f"missing: {data['missing']} or declared field/surface "
+                             f"reviews are unresolved: {data['surface_review']['unresolved']}; "
+                             "capture/review each surface or justify n-a")
         self.db.execute("INSERT INTO module_claims(module, claim, updated) VALUES(?,?,?)"
                         " ON CONFLICT(module) DO UPDATE SET claim=excluded.claim,"
                         " updated=excluded.updated", (module, claim_state, now()))
@@ -576,6 +601,141 @@ class FieldLedger:
             rows.append([r["module"], r["claim"], ", ".join(data["missing"]) or "-",
                          r["updated"]])
         return rows
+
+    # ---------------- constraint claims and independent output surfaces ----------------
+    def constraint(self, asset_id, method, location, field, kind, value, source,
+                   source_ref, response_id=None) -> Dict[str, Any]:
+        """Store a rule *claim*. A response-rejection label is not a rule proof."""
+        asset = self._asset(asset_id)
+        if asset["kind"] != "endpoint" or method not in HTTP_METHODS or location not in LOCATIONS:
+            raise ValueError("constraint needs an exact endpoint, HTTP method and field location")
+        if kind not in CONSTRAINT_KINDS or source not in CONSTRAINT_SOURCES:
+            raise ValueError("unknown constraint kind or claim source")
+        review_label(field)
+        review_label(source_ref)
+        if not isinstance(value, str) or not 1 <= len(value) <= 160 or any(c in value for c in "\r\n\x00"):
+            raise ValueError("constraint rule must be a bounded single-line claim, not a submitted value")
+        if source == "server-rejection":
+            if type(response_id) is not int or response_id < 1 or source_ref != f"response:{response_id}":
+                raise ValueError("server rejection needs its exact stored response reference")
+            response = self.ctx.store.response(response_id)
+            if endpoint_key(response["url"]) != endpoint_key(asset["value"]) or response["method"] != method:
+                raise ValueError("rejection response is not the declared operation")
+        elif response_id is not None:
+            raise ValueError("only server-rejection claims accept a response ID")
+        self.db.execute("INSERT OR IGNORE INTO declared_constraints"
+                        "(asset_id,method,location,field,kind,rule_value,source,source_ref,created)"
+                        " VALUES(?,?,?,?,?,?,?,?,?)",
+                        (asset_id, method, location, field, kind, value, source, source_ref, now()))
+        self.db.commit()
+        return {"asset_id": asset_id, "field": field, "source": source,
+                "basis": "claim provenance only; not independently verified enforcement",
+                "executed": False}
+
+    def constraints(self, asset_id) -> Dict[str, Any]:
+        self._asset(asset_id)
+        rows = [dict(r) for r in self.db.execute(
+            "SELECT id,method,location,field,kind,rule_value,source,source_ref "
+            "FROM declared_constraints WHERE asset_id=? ORDER BY id", (asset_id,))]
+        return {"asset_id": asset_id, "claims": rows, "executed": False,
+                "basis": "client/spec/server-rejection claims are separate; no accepted state inferred"}
+
+    def expect_surface(self, asset_id, field, surface, case_id, source_ref, reason,
+                       account="", workflow="") -> Dict[str, Any]:
+        self._asset(asset_id)
+        for value in (field, surface, source_ref, account or "", workflow or ""):
+            if value:
+                review_label(value)
+        if not field or not surface or not source_ref or case_id not in SURFACE_CASES:
+            raise ValueError("expected surface requires field, label, source and render case")
+        if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 300 or any(
+                c in reason for c in "\r\n\x00"):
+            raise ValueError("expected surface needs a bounded single-line reason")
+        self.db.execute("INSERT OR IGNORE INTO field_surface_expectations"
+                        "(asset_id,field,surface,case_id,account,workflow,source_ref,reason,created)"
+                        " VALUES(?,?,?,?,?,?,?,?,?)", (asset_id, field, surface, case_id,
+                        account or "", workflow or "", source_ref, reason, now()))
+        self.db.commit()
+        row = self.db.execute("SELECT id FROM field_surface_expectations WHERE "
+                              "asset_id=? AND field=? AND surface=? AND case_id=? AND "
+                              "account=? AND workflow=?", (asset_id, field, surface, case_id,
+                              account or "", workflow or "")).fetchone()
+        return {"expectation_id": row[0], "executed": False, "finding_promoted": False}
+
+    def review_surface(self, expectation_id, state, note, request_id=None) -> Dict[str, Any]:
+        row = self.db.execute("SELECT * FROM field_surface_expectations WHERE id=?",
+                              (expectation_id,)).fetchone() if type(expectation_id) is int else None
+        if row is None:
+            raise ValueError("unknown expected field/surface/case")
+        self._asset(row["asset_id"])
+        if state not in ("reviewed", "n-a", "blocked", "inconclusive") or not isinstance(note, str) \
+                or not 1 <= len(note.strip()) <= 300 or any(c in note for c in "\r\n\x00"):
+            raise ValueError("surface review needs a valid state and bounded reason")
+        sha = None
+        if state == "reviewed":
+            if type(request_id) is not int or request_id < 1:
+                raise ValueError("reviewed surface needs a stored captured response")
+            match = self.db.execute("SELECT 1 FROM canary_events e JOIN canary_markers m "
+                                    "ON e.marker=m.marker WHERE m.asset_id=? AND m.field=? "
+                                    "AND e.surface=? AND e.source='response-capture' "
+                                    "AND e.encoding IN ('raw','base64') AND e.request_id=?",
+                                    (row["asset_id"], row["field"], row["surface"], request_id)).fetchone()
+            if match is None:
+                raise ValueError("no matching field canary in that captured render surface")
+            response = self.ctx.store.response(request_id)
+            if not self.ctx.scope.is_in(response["url"]) or response["body_complete"] != 1:
+                raise ValueError("review needs an in-scope complete response capture")
+            sha = response_hash(response)
+        elif request_id is not None:
+            raise ValueError("non-reviewed surface states cannot cite an observed response")
+        self.db.execute("INSERT INTO field_surface_reviews"
+                        "(expectation_id,state,request_id,response_sha256,note,updated) VALUES(?,?,?,?,?,?) "
+                        "ON CONFLICT(expectation_id) DO UPDATE SET state=excluded.state, "
+                        "request_id=excluded.request_id,response_sha256=excluded.response_sha256, "
+                        "note=excluded.note,updated=excluded.updated",
+                        (expectation_id, state, request_id, sha, note, now()))
+        self.db.commit()
+        return {"expectation_id": expectation_id, "state": state, "executed": False,
+                "basis": "canary capture is propagation evidence, not XSS/SSTI safety or execution"}
+
+    def surface_matrix(self, module) -> Dict[str, Any]:
+        if not isinstance(module, str) or not 1 <= len(module) <= 200:
+            raise ValueError("module must be a bounded label")
+        assets = [a["id"] for a in self._module_assets(module)]
+        rows = []
+        if assets:
+            keys = ",".join("?" for _ in assets)
+            rows = self.db.execute("SELECT e.*,r.state,r.request_id,r.response_sha256 "
+                                   "FROM field_surface_expectations e LEFT JOIN field_surface_reviews r "
+                                   f"ON r.expectation_id=e.id WHERE e.asset_id IN ({keys}) "
+                                   "ORDER BY e.id", assets).fetchall()
+        unresolved, items = [], []
+        for row in rows:
+            state = row["state"] or "unreviewed"
+            if state == "reviewed":
+                try:
+                    response = self.ctx.store.response(row["request_id"])
+                    canary = self.db.execute("SELECT 1 FROM canary_events e JOIN canary_markers m "
+                                             "ON e.marker=m.marker WHERE m.asset_id=? AND m.field=? "
+                                             "AND e.surface=? AND e.source='response-capture' "
+                                             "AND e.encoding IN ('raw','base64') AND e.request_id=?",
+                                             (row["asset_id"], row["field"], row["surface"],
+                                              row["request_id"])).fetchone()
+                    if response_hash(response) != row["response_sha256"] or not canary or \
+                            response["body_complete"] != 1 or not self.ctx.scope.is_in(response["url"]):
+                        state = "stale"
+                except (KeyError, ValueError, TypeError):
+                    state = "stale"
+            if state not in ("reviewed", "n-a"):
+                unresolved.append(row["id"])
+            items.append({"id": row["id"], "asset_id": row["asset_id"], "field": row["field"],
+                          "surface": row["surface"], "case": row["case_id"],
+                          "account": row["account"], "workflow": row["workflow"],
+                          "state": state, "source_ref": row["source_ref"]})
+        return {"module": module, "expected": len(items), "items": items,
+                "unresolved": unresolved, "complete": bool(items) and not unresolved,
+                "basis": "empty expected-surface inventory is unknown, not complete; "
+                         "reviewed means captured marker, not a security verdict"}
 
     # ---------------- canary map ----------------
     def canary(self, asset_id, field, method="", location="unknown", account=None,

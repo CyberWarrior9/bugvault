@@ -31,15 +31,15 @@ principle: deterministic code does everything that can be done deterministically
 models are used only where reasoning is genuinely required, and each gets the
 narrowest task that reasoning needs.
 
-| Responsibility | Assigned to | Rationale |
-|---|---|---|
-| Scope, budgets, permissions, routing itself | **Deterministic code** | Must never be model-decided; current enforcement in `recon/campaign.py`, `net.py`, `egress.py` |
-| Retrieval / context assembly | Code first (`recon/recall.py`); optionally local Qwen for summarization later | Lexical recall is already deterministic and provenance-linked |
-| Investigation planning | GLM or an OpenAI model — **chosen by evaluation, not yet benchmarked** | No live adapter exists; `recon/planning.py` provides the offline proposal boundary |
-| **Payload generation** | **DeepSeek V4.1 Flash primary → DeepSeek fallback** | Operator decision (§1) |
-| Candidate/evidence review | A **separate model family** from the generator + deterministic checks | Validator brief already specifies family separation as a requirement |
-| Target requests | **Constrained executor, never an LLM** | Scoped GET/HEAD client exists; payload-testing executor does not |
-| Report writing | A reporting model restricted to validated evidence artifacts | Reporter brief exists; no model behind it |
+| Responsibility                              | Assigned to                                                                   | Rationale                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Scope, budgets, permissions, routing itself | **Deterministic code**                                                        | Must never be model-decided; current enforcement in `recon/campaign.py`, `net.py`, `egress.py` |
+| Retrieval / context assembly                | Code first (`recon/recall.py`); optionally local Qwen for summarization later | Lexical recall is already deterministic and provenance-linked                                  |
+| Investigation planning                      | GLM or an OpenAI model — **chosen by evaluation, not yet benchmarked**        | No live adapter exists; `recon/planning.py` provides the offline proposal boundary             |
+| **Payload generation**                      | **DeepSeek V4.1 Flash primary → DeepSeek fallback**                           | Operator decision (§1)                                                                         |
+| Candidate/evidence review                   | A **separate model family** from the generator + deterministic checks         | Validator brief already specifies family separation as a requirement                           |
+| Target requests                             | **Constrained executor, never an LLM**                                        | GET/PUT/POST/PATCH/DELETE/HEAD client exists; payload-testing executor does not                |
+| Report writing                              | A reporting model restricted to validated evidence artifacts                  | Reporter brief exists; no model behind it                                                      |
 
 Roles not yet implemented anywhere: summarizer, planning model, payload generator,
 independent reviewer, reporting model. Roles implemented in code: scheduler,
@@ -55,7 +55,7 @@ retrieval, context export (`fact context`), proposal validation, executor (GET/H
 | `summarize.context` | Local Qwen (TBD) | none — degrade to raw lexical recall | Task skipped, not rerouted |
 | `report.draft` | TBD | none — human writes it | Task skipped |
 
-Deterministic stages (scope check, context assembly, fact verification, execution,
+Deterministic stages (context assembly, fact verification, execution,
 evidence gating) have **no model and therefore no fallback** — they succeed, fail, or
 block. A policy/budget failure must **never** trigger model fallback; that would be
 working around a control (mirrors `recon/reliability.py` semantics for intel providers).

@@ -5,7 +5,7 @@ description: Hunt evidence-backed JavaScript bundle and source-map leads on auth
 
 # JS bundle hunt — bounded inventory and offline lead ledger
 
-Read `scope-policy`, the campaign's published rules and `coverage.md` before target tests. The dedicated visible browser through Burp is the default live path; a standing campaign execution plan can also allow scoped native requests/operator-run scanners within the written scope/rate/budget. The JS ledger itself sends **no traffic**. A separate `recon run` may execute queued `jsretained` GET jobs only under active mode, `program_url`, `js.rules_reviewed` and a positive `js.stale.max_old_assets` (default **0**). Do not use an importer, Burp send or a shell client to bypass a failed check. If browser control or a selected authorized campaign is unavailable, do not claim a live test.
+The dedicated visible browser through Burp is the default live path; a standing campaign execution plan can also allow scoped native requests/operator-run scanners within the written scope/rate/budget. The JS ledger itself sends **no traffic**. A separate `recon run` may execute queued `jsretained` GET jobs only under active mode, `program_url`, `js.rules_reviewed` and a positive `js.stale.max_old_assets` (default **0**). Do not use an importer, Burp send or a shell client to bypass a failed check. If browser control or a selected authorized campaign is unavailable, do not claim a live test.
 
 ## Inventory → test card → destination
 
@@ -24,3 +24,7 @@ Collect only in-scope script/map URLs referenced by authorized content, with exi
 The ledger has conservative **partial** J01–J17 static candidates, not complete syntax/dataflow coverage. J01/J02/J12/J15 stale or privileged operations → function policy with test accounts and a negative control, not bulk enumeration; J03 Next actions → captured owned action, disposable objects for writes; J04/J05 GraphQL/RPC → captured operation and field policy; J06 secret → format-only classification, no assumed validity; J07 map alone → never-submit; J08 client gate → verify the *server* gate; J09 client flow → marker execution in the browser; J10 host → scope check before contact; J11 version → advisory prerequisites, not exploit proof; J13 auth/crypto → captured carrier only; J14 signed storage → upload lifecycle; J16 WASM/dynamic code → explicit extraction gap; J17 chunk/map/old-build delivery → paired roles plus non-public-source review. See `plan_js_bundle_hunt.md` §6.2 for the intended full taxonomy and §11 for acceptance cases not yet met.
 
 Never publish pre-fix source, internal package names or raw secrets; do not test third-party hosts, buy/share accounts, attempt credential spraying or download bulk data. If a browser, scope/method grant, labelled test account or budget is missing, leave the case blocked/inconclusive and preserve the lead.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

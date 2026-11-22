@@ -22,6 +22,11 @@ SKILLS_DIR = REPO / SKILLS_DIR_REL
 
 # Coverage class -> skills to load, primary first.
 SKILLS_FOR_CLASS: Dict[str, Tuple[str, ...]] = {
+    "command-injection": ("hunt-rce",),
+    "deserialization": ("hunt-rce",),
+    "http-smuggling": ("hunt-http-smuggling",),
+    "cache": ("hunt-cache",),
+    "security-misconfiguration": ("hunt-security-misconfig",),
     "cloud-misconfiguration": ("hunt-cloud-misconfig",),
     "subdomain-takeover": ("hunt-takeover",),
     "ssrf": ("hunt-ssrf",),
@@ -65,6 +70,9 @@ SEEDED_BY: Dict[str, str] = {
     "file-upload": "score.py",
     "graphql": "score.py",
     "html-injection": "score.py",
+    "http-smuggling": "score.py",
+    "cache": "score.py",
+    "security-misconfiguration": "score.py",
     "idor-bola": "score.py",
     "mass-assignment": "score.py",
     "mfa-bypass": "score.py",
@@ -78,6 +86,8 @@ SEEDED_BY: Dict[str, str] = {
     "xss": "score.py",
     "xxe": "score.py",
     # evidence-based: seeded by the module that observed the evidence
+    "command-injection": "rce.py, cmdi.py",
+    "deserialization": "rce.py, deser.py",
     "cloud-misconfiguration": "cloud.py",
     "info-disclosure": "jsintel.py",
     "js-bundle": "jsledger.py",

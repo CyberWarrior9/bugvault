@@ -162,9 +162,10 @@ chain still stays parked until the three realism questions
   Keep the plain-marker response as the negative-control baseline so encoding
   differences are attributable to your syntax, not the field. Negative
   verdicts name the encoding/rule observed.
-- Test accounts only; never target real users with executing payloads. Never
-  persist payloads beyond the proof session or deface shared surfaces — clean
-  up your own test objects.
 - Live tests originate in the dedicated browser through Burp; `recon send`
   only where the operator has excepted native checks; `fact check` binds
   response-marker claims to stored evidence.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

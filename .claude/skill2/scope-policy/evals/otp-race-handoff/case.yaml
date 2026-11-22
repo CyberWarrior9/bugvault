@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: otp-race-handoff
+expected_outcome: |
+  Choose synchronized Repeater over unsynchronized Intruder, use two requests with a
+  known code on account A and a sequential control, require private raw evidence and
+  manual budget accounting, and keep agents from executing Burp without an adapter.
+  If unavailable, park the lead with an implementation fallback rather than claiming
+  race coverage.

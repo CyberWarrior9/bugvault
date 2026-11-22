@@ -127,7 +127,9 @@ class LogicLedgerTests(unittest.TestCase):
         control = self.root / artifact(self.root, "proof-control.txt", "fixed synthetic refusal")
         impact = self.root / artifact(self.root, "impact.txt", "owned synthetic action effect")
         finding.move(fid, "confirmed", replay=proof, control=control)
-        finding.move(fid, "impact-proven", impact=impact)
+        finding.move(fid, "impact-proven", impact=impact, poe_level=3,
+                     quote="owned synthetic action effect", impact_kind="state-change",
+                     measurement="1 of 1 owned synthetic actions took effect")
         self.assertIsNone(next(h for h in self.logic.model.chain_next()
                                if h["hint"] == "business-logic->access-control")["target_finding"])
         # Test-only change of the synthetic finding's explicit lineage, not a claim about a target.

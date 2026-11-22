@@ -16,10 +16,9 @@ and an async render are independent; a negative on one does not close another.
 
 ## Workflow
 
-1. Read `scope-policy` and the campaign's written rules. Use only supplied test
+1. Use supplied test
    accounts and the dedicated browser through Burp, or a recorded campaign
-   execution path. Do not test a staff mailbox without the program's allowance.
-   `recon ssti` itself is offline and sends nothing.
+   execution path. `recon ssti` itself is offline and sends nothing.
 2. Import capture(s), run `python3 -m recon fields sync <campaign> --asset-id N`,
    and inspect `python3 -m recon fields show <campaign> --asset-id N --case ssti-eval`.
    The method, location, field and account must match the real workflow.
@@ -50,20 +49,17 @@ and an async render are independent; a negative on one does not close another.
 
 ## Depth rungs (grant-gated, offline)
 
-After confirmation, read `ssti.depth_grants` in `scope.json` (copied from the
-program's written rules). `recon ssti plan` prints the gates, attempt markers,
-listed data paths and read-only methods. The ledger records **operator-supplied
-evidence**; it does not read a file, use a token, resolve a callback host or send
-a request. Any live action happens separately in the dedicated browser through
+ recon ssti plan` prints the gates, attempt markers,
+listed data paths. The ledger records **operator-supplied
+evidence** ; Any live action happens separately in the dedicated browser through
 Burp (or the recorded campaign execution path), then the artifacts are supplied.
 
 - `cred-read` (`file-read`): listed path only, two distinct artifacts (evidence
-  and control), a redaction marker, no secret signature. Raises the ceiling to
+  and control) no secret signature. Raises the ceiling to
   high.
-- `token-use` (`execution`): after observed `cred-read`; one read-only
-  `GET`/`HEAD`/`OPTIONS` exercise on one in-scope plain URL carrying the set's
-  marker and no credential-named query parameters; one attempt; redacted
-  artifact. Raises the ceiling to critical.
+- `token-use` (`execution`): after observed `cred-read`; Five 
+  `GET`/`PUT`/`PATCH`/`DELETE`/`HEAD`/`OPTIONS` exercise on one in-scope plain URL carrying the set's
+  marker and  credential-named query parameters; Five attempt. Raises the ceiling to critical.
 - `lateral` (`execution`): after observed `token-use`; approved
   `ssti.callback_hosts` (or `ssrf.callback_hosts`) receiver, different from the
   render origin, carrying the marker; one OOB attempt; artifact contains the
@@ -99,6 +95,9 @@ gate. Never store a live credential or token value; redact it before recording.
   No engine identification, escape generator, native execution or automated
   finding promotion is implemented here. Use the existing validator and realism
   gate for any claim beyond evaluation; never elevate a lead from a syntax match.
-- Respect rate/budget limits, avoid destructive statements and other users'
-  data, and restore the supplied test field after stored probes. A broken mail
+-  A broken mail
   pipeline is not an impact proof.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

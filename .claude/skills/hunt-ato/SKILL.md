@@ -24,8 +24,7 @@ a chained one is what upgrades a Medium or High to Critical.
 
 ## Setup
 
-As in `hunt-auth-bypass`: two test accounts **A** (attacker) and **V** (victim) that you
-own, V's profile marked with `canary_ato_<8 random chars>`, HAR imports for both,
+As in `hunt-auth-bypass`: two test accounts **A** (attacker) and **V** (victim), V's profile marked with `canary_ato_<8 random chars>`, HAR imports for both,
 `"allowed_methods"` including `POST` in `scope.json` when the program permits
 state-changing tests, and every request sent with `python3 -m recon send`. You need both
 test mailboxes to read reset and magic links.
@@ -139,14 +138,13 @@ Source-indexed, not reproduced; "unknown" means no indexed source reported an am
 Upstream also cites Twitter #174500 (circumventing account lockout), which is not in
 BugVault's index.
 
-## Hard limits
-
-Only accounts you own; no credential guessing, stuffing or spraying against anyone
-else's account; bounded attempts within the program's rate rules; stop at lockout,
-CAPTCHA or 429; minimum data once V's marker is proven.
 
 ## Related skills
 
 `hunt-auth-bypass` (bypasses that feed takeover) · `hunt-mfa-bypass` · `hunt-oauth` ·
 `hunt-saml` · `service-mapping` (takeover leads). Gates: `recon/prompts/validator.md`,
 `vault/00-Engine/doctrine.md`.
+
+Disclosed-report precedent for this class — scale, highest-bounty disclosures and
+corpus queries: [references/corpus.md](references/corpus.md). Precedent, not evidence:
+a disclosed report shows a bug was accepted somewhere, never that this target has it.

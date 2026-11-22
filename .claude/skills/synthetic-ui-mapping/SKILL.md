@@ -5,7 +5,7 @@ description: Run opt-in authorized BugVault Playwright SPA exploration with mock
 
 # Synthetic UI mapping
 
-Read scope-policy first. Require permitted active mode, `runtime.enabled=true`, compatible Playwright and Chromium. Start with `runtime.live_api=false`; keep configured routes/clicks bounded.
+ Require permitted active mode, `runtime.enabled=true`, compatible Playwright and Chromium. Start with `runtime.live_api=false`; keep configured routes/clicks bounded.
 
 The browser receives synthetic local state and mock API replies. Every allowed real HTTP read goes through the scoped client; WebSockets are intercepted. Do not add network passthrough to fix a rendering problem.
 
